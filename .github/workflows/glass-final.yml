@@ -1,16 +1,15 @@
-name: glass-final
+name: mac-replica
 on: workflow_dispatch
 jobs:
-  glass:
+  replica:
     runs-on: macos-26
-    timeout-minutes: 25
+    timeout-minutes: 35
     steps:
-      - name: Active glass, parameter sweep, interaction video
+      - name: In-app UI, animations, glass states, sweeps
         shell: bash
         run: |
           GITHUB_WORKSPACE_SCRIPTS="$RUNNER_TEMP/scripts"; mkdir -p "$GITHUB_WORKSPACE_SCRIPTS"
-          set +e
-          cat > "$GITHUB_WORKSPACE_SCRIPTS/inspect5.m" <<'OBJC_EOF'
+          cat > "$GITHUB_WORKSPACE_SCRIPTS/replica.m" <<'OBJC_EOF'
           #import <AppKit/AppKit.h>
           #import <QuartzCore/QuartzCore.h>
           #import <objc/runtime.h>
@@ -206,306 +205,577 @@ jobs:
               });
           }
 
-          static void pump(double s) { [[NSRunLoop currentRunLoop] runUntilDate:[NSDate dateWithTimeIntervalSinceNow:s]]; }
+
+          // ======== event-delivering pump (fixes: events were never dispatched before) ========
+          static void pump(double secs) {
+              NSDate *until = [NSDate dateWithTimeIntervalSinceNow:secs];
+              while ([until timeIntervalSinceNow] > 0) {
+                  NSEvent *e = [NSApp nextEventMatchingMask:NSEventMaskAny untilDate:[NSDate dateWithTimeIntervalSinceNow:0.01] inMode:NSDefaultRunLoopMode dequeue:YES];
+                  if (e) [NSApp sendEvent:e];
+              }
+          }
+
+          // ======== animation recorder ========
+          static NSMutableSet *SEEN = nil;
+          static FILE *AF = NULL;
+          static FILE *CF = NULL;
+          static NSString *tfDesc(CAMediaTimingFunction *tf) {
+              if (!tf) return @"nil";
+              float c1[2] = {0, 0}, c2[2] = {0, 0};
+              [tf getControlPointAtIndex:1 values:c1];
+              [tf getControlPointAtIndex:2 values:c2];
+              return [NSString stringWithFormat:@"cubic(%.4f,%.4f,%.4f,%.4f)", c1[0], c1[1], c2[0], c2[1]];
+          }
+          static NSString *animDesc(CAAnimation *a, int depth) {
+              if (!a || depth > 4) return @"";
+              NSMutableString *m = [NSMutableString stringWithFormat:@"%s dur=%.4f begin=%.4f speed=%.3f fill=%@ tf=%@",
+                  class_getName(object_getClass(a)), [a duration], [a beginTime], [a speed], [a fillMode], tfDesc([a timingFunction])];
+              @try {
+                  if ([a isKindOfClass:[CAPropertyAnimation class]]) [m appendFormat:@" keyPath=%@ additive=%d", [(CAPropertyAnimation *)a keyPath], [(CAPropertyAnimation *)a isAdditive]];
+                  if ([a isKindOfClass:[CABasicAnimation class]]) [m appendFormat:@" from=%@ to=%@ by=%@", clip([(CABasicAnimation *)a fromValue]), clip([(CABasicAnimation *)a toValue]), clip([(CABasicAnimation *)a byValue])];
+                  if ([a isKindOfClass:[CASpringAnimation class]]) {
+                      CASpringAnimation *sp = (CASpringAnimation *)a;
+                      [m appendFormat:@" SPRING mass=%.5f stiffness=%.5f damping=%.5f v0=%.5f settle=%.4f", [sp mass], [sp stiffness], [sp damping], [sp initialVelocity], [sp settlingDuration]];
+                  }
+                  if ([a isKindOfClass:[CAKeyframeAnimation class]]) {
+                      CAKeyframeAnimation *k = (CAKeyframeAnimation *)a;
+                      [m appendFormat:@" values=%@ keyTimes=%@ calc=%@", clip([k values]), clip([k keyTimes]), [k calculationMode]];
+                  }
+                  if ([a isKindOfClass:[CAAnimationGroup class]]) {
+                      for (CAAnimation *c in [(CAAnimationGroup *)a animations]) [m appendFormat:@" {child: %@}", animDesc(c, depth + 1)];
+                  }
+                  for (NSString *k in @[@"perceptualDuration", @"bounce", @"preferredFrameRateRange", @"velocity", @"durationAdjustment"]) {
+                      if ([a respondsToSelector:NSSelectorFromString(k)]) {
+                          @try { [m appendFormat:@" %@=%@", k, clip([a valueForKey:k])]; } @catch (NSException *e) { }
+                      }
+                  }
+              } @catch (NSException *e) { }
+              return m;
+          }
+          static void scanLayer(CALayer *l, int depth, double now) {
+              if (!l || depth > 60) return;
+              NSArray *keys = nil;
+              @try { keys = [l animationKeys]; } @catch (NSException *e) { }
+              for (NSString *k in keys) {
+                  CAAnimation *a = nil;
+                  @try { a = [l animationForKey:k]; } @catch (NSException *e) { }
+                  if (!a) continue;
+                  if ([a isKindOfClass:[CAPropertyAnimation class]] && CF) {
+                      NSString *kp = [(CAPropertyAnimation *)a keyPath];
+                      id pv = nil;
+                      @try { if (kp) pv = [[l presentationLayer] valueForKeyPath:kp]; } @catch (NSException *e) { }
+                      fprintf(CF, "%.4f %s %p %s %s\n", now, class_getName(object_getClass(l)), l, [kp ?: @"?" UTF8String], [clip(pv) UTF8String]);
+                  }
+                  NSString *ptr = [NSString stringWithFormat:@"%p", a];
+                  if ([SEEN containsObject:ptr]) continue;
+                  [SEEN addObject:ptr];
+                  CGRect b = [l bounds];
+                  if (AF) { fprintf(AF, "%.4f layer=%s %p size=%.0fx%.0f key=%s | %s\n", now, class_getName(object_getClass(l)), l, b.size.width, b.size.height, [k UTF8String], [animDesc(a, 0) UTF8String]); fflush(AF); }
+              }
+              NSArray *subs = nil;
+              @try { subs = [[l sublayers] copy]; } @catch (NSException *e) { }
+              for (CALayer *s in subs) scanLayer(s, depth + 1, now);
+              [subs release];
+          }
+          static void scanAll(void) {
+              double now = CFAbsoluteTimeGetCurrent() - REC0;
+              for (NSWindow *w in [[[NSApp windows] copy] autorelease]) {
+                  NSView *cv = [w contentView];
+                  CALayer *top = [[cv superview] layer] ?: [cv layer];
+                  scanLayer(top, 0, now);
+              }
+              if (CF) fflush(CF);
+          }
+
+          // ======== glass state of every window (titlebar, menus, popovers, sheets) ========
+          static FILE *SF = NULL;
+          static void dumpGlassAll(NSString *step) {
+              if (!SF) return;
+              for (NSWindow *w in [[[NSApp windows] copy] autorelease]) {
+                  if (![w isVisible]) continue;
+                  NSView *cv = [w contentView];
+                  CALayer *top = [[cv superview] layer] ?: [cv layer];
+                  NSMutableArray *fs = [NSMutableArray array];
+                  findGlassFilters(top, fs, 0);
+                  NSRect fr = [w frame];
+                  fprintf(SF, "### %s | window %s level=%ld frame=(%.0f,%.0f %.0fx%.0f) key=%d filters=%lu\n", [step UTF8String], class_getName([w class]),
+                          (long)[w level], fr.origin.x, fr.origin.y, fr.size.width, fr.size.height, [w isKeyWindow], (unsigned long)[fs count]);
+                  for (id f in fs) fprintf(SF, "    %s\n", [filterLine(f) UTF8String]);
+              }
+              fflush(SF);
+          }
+          static void walkWindows(NSString *dir, NSString *step) {
+              NSString *safe = [[step componentsSeparatedByCharactersInSet:[[NSCharacterSet alphanumericCharacterSet] invertedSet]] componentsJoinedByString:@"_"];
+              openOut(dir, [NSString stringWithFormat:@"tree_%@.txt", safe]);
+              for (NSWindow *w in [[[NSApp windows] copy] autorelease]) {
+                  if (![w isVisible]) continue;
+                  P([NSString stringWithFormat:@"######## window %s title=%@ level=%ld", class_getName([w class]), [w title], (long)[w level]]);
+                  walk([[w contentView] layer], 0);
+              }
+          }
+
+          // ======== tiny helpers: toolbar + table data ========
+          @interface TBDelegate : NSObject <NSToolbarDelegate>
+          @end
+          @implementation TBDelegate
+          - (NSArray *)toolbarDefaultItemIdentifiers:(NSToolbar *)t { return @[@"seg", NSToolbarFlexibleSpaceItemIdentifier, @"btn", @"search"]; }
+          - (NSArray *)toolbarAllowedItemIdentifiers:(NSToolbar *)t { return [self toolbarDefaultItemIdentifiers:t]; }
+          - (NSToolbarItem *)toolbar:(NSToolbar *)t itemForItemIdentifier:(NSToolbarItemIdentifier)ident willBeInsertedIntoToolbar:(BOOL)flag {
+              if ([ident isEqual:@"search"]) {
+                  Class S = NSClassFromString(@"NSSearchToolbarItem");
+                  if (S) return [[[S alloc] initWithItemIdentifier:ident] autorelease];
+              }
+              NSToolbarItem *it = [[[NSToolbarItem alloc] initWithItemIdentifier:ident] autorelease];
+              if ([ident isEqual:@"seg"]) {
+                  NSSegmentedControl *sg = [NSSegmentedControl segmentedControlWithLabels:@[@"List", @"Grid"] trackingMode:NSSegmentSwitchTrackingSelectOne target:nil action:nil];
+                  [sg setSelectedSegment:0]; [it setView:sg]; [it setLabel:@"View"];
+              } else {
+                  NSImage *img = [NSImage imageWithSystemSymbolName:@"square.and.arrow.up" accessibilityDescription:@"Share"];
+                  if (img) [it setImage:img];
+                  [it setLabel:@"Share"]; [it setTarget:nil];
+              }
+              return it;
+          }
+          @end
+          @interface TableDS : NSObject <NSTableViewDataSource, NSTableViewDelegate>
+          @end
+          @implementation TableDS
+          - (NSInteger)numberOfRowsInTableView:(NSTableView *)tv { return 8; }
+          - (NSView *)tableView:(NSTableView *)tv viewForTableColumn:(NSTableColumn *)c row:(NSInteger)r {
+              NSArray *names = @[@"Recents", @"Applications", @"Desktop", @"Documents", @"Downloads", @"iCloud Drive", @"Shared", @"Network"];
+              NSTableCellView *cell = [[[NSTableCellView alloc] initWithFrame:NSMakeRect(0, 0, 180, 24)] autorelease];
+              NSTextField *t = [NSTextField labelWithString:names[r]];
+              [t setFrame:NSMakeRect(28, 4, 150, 16)];
+              NSImageView *iv = [NSImageView imageViewWithImage:([NSImage imageWithSystemSymbolName:@"folder" accessibilityDescription:nil] ?: [[[NSImage alloc] init] autorelease])];
+              [iv setFrame:NSMakeRect(4, 3, 18, 18)];
+              [cell addSubview:iv]; [cell addSubview:t]; [cell setTextField:t];
+              return cell;
+          }
+          @end
+
+          // ======== isolated sweep (each glass alone in its own container) ========
+          static void runSweep(NSWindow *win, NSView *root, CAGradientLayer *grad, NSString *outdir, NSString *fileName) {
+              Class G = NSClassFromString(@"NSGlassEffectView");
+              Class GC = NSClassFromString(@"NSGlassEffectContainerView");
+              if (!G) return;
+              openOut(outdir, fileName);
+              P([NSString stringWithFormat:@"reduceTransparency=%d increaseContrast=%d differentiateWithoutColor=%d backingScale=%.1f",
+                 [[NSWorkspace sharedWorkspace] accessibilityDisplayShouldReduceTransparency],
+                 [[NSWorkspace sharedWorkspace] accessibilityDisplayShouldIncreaseContrast],
+                 [[NSWorkspace sharedWorkspace] accessibilityDisplayShouldDifferentiateWithoutColor], [win backingScaleFactor]]);
+              for (NSView *v in [[[root subviews] copy] autorelease]) [v removeFromSuperview];
+              NSView *box = GC ? [[[GC alloc] initWithFrame:[root bounds]] autorelease] : root;
+              if (box != root) [root addSubview:box];
+              NSView *g = [[[G alloc] initWithFrame:NSMakeRect(40, 40, 300, 100)] autorelease];
+              [box addSubview:g];
+              NSMutableArray *shapes = [NSMutableArray array];
+              for (int h = 20; h <= 440; h += 20) [shapes addObject:@[@300, @(h), @28]];
+              for (int w = 40; w <= 800; w += 60) [shapes addObject:@[@(w), @100, @28]];
+              for (int r = 0; r <= 60; r += 10) [shapes addObject:@[@300, @120, @(r)]];
+              for (NSString *apn in @[NSAppearanceNameAqua, NSAppearanceNameDarkAqua]) {
+                  [win setAppearance:[NSAppearance appearanceNamed:apn]];
+                  for (NSArray *sh in shapes) {
+                      CGFloat w = [sh[0] doubleValue], h = [sh[1] doubleValue];
+                      [g setFrame:NSMakeRect(40, 40, w, h)];
+                      @try { [g setValue:sh[2] forKey:@"cornerRadius"]; } @catch (NSException *e) { }
+                      pump(0.5);
+                      NSMutableArray *fs = [NSMutableArray array];
+                      findGlassFilters([root layer], fs, 0);
+                      for (id f in fs) P([NSString stringWithFormat:@"%@ w=%.0f h=%.0f r=%@ | %@", [apn isEqual:NSAppearanceNameAqua] ? @"light" : @"dark", w, h, sh[2], filterLine(f)]);
+                  }
+                  for (int style = 0; style <= 1; style++) {
+                      @try { [g setValue:@(style) forKey:@"style"]; } @catch (NSException *e) { }
+                      [g setFrame:NSMakeRect(40, 40, 300, 120)];
+                      pump(0.6);
+                      NSMutableArray *fs = [NSMutableArray array];
+                      findGlassFilters([root layer], fs, 0);
+                      for (id f in fs) P([NSString stringWithFormat:@"style=%d | %@", style, filterLine(f)]);
+                  }
+                  @try { [g setValue:@0 forKey:@"style"]; } @catch (NSException *e) { }
+                  NSArray *states = @[@[@"_interactionState", @0, @1, @2], @[@"_contentLensing", @0, @1], @[@"_subduedState", @0, @1], @[@"_scrimState", @0, @1]];
+                  for (NSArray *st in states) {
+                      for (NSUInteger i = 1; i < [st count]; i++) {
+                          @try { [g setValue:st[i] forKey:st[0]]; } @catch (NSException *e) { P([NSString stringWithFormat:@"STATE %@ not settable", st[0]]); break; }
+                          pump(0.6);
+                          NSMutableArray *fs = [NSMutableArray array];
+                          findGlassFilters([root layer], fs, 0);
+                          for (id f in fs) P([NSString stringWithFormat:@"STATE %@=%@ | %@", st[0], st[i], filterLine(f)]);
+                      }
+                      @try { [g setValue:st[1] forKey:st[0]]; } @catch (NSException *e) { }
+                  }
+                  @try { [g setValue:[NSColor systemBlueColor] forKey:@"tintColor"]; pump(0.6);
+                      NSMutableArray *fs = [NSMutableArray array]; findGlassFilters([root layer], fs, 0);
+                      for (id f in fs) P([NSString stringWithFormat:@"TINT blue | %@", filterLine(f)]);
+                      [g setValue:nil forKey:@"tintColor"]; } @catch (NSException *e) { }
+              }
+              [win setAppearance:nil];
+          }
 
           int main(int argc, const char **argv) {
               @autoreleasepool {
                   NSString *out = argc > 1 ? [NSString stringWithUTF8String:argv[1]] : @".";
+                  NSString *mode = argc > 2 ? [NSString stringWithUTF8String:argv[2]] : @"full";
                   [[NSFileManager defaultManager] createDirectoryAtPath:out withIntermediateDirectories:YES attributes:nil error:nil];
-                  const char *libs[] = {
-                      "/System/Library/Frameworks/QuartzCore.framework/QuartzCore",
-                      "/System/Library/PrivateFrameworks/RenderBox.framework/RenderBox",
-                      "/System/Library/Frameworks/SwiftUI.framework/SwiftUI",
-                      "/System/Library/PrivateFrameworks/CoreUI.framework/CoreUI",
-                      "/System/Library/Frameworks/CoreImage.framework/CoreImage",
-                      "/System/Library/PrivateFrameworks/CoreMaterial.framework/CoreMaterial" };
-                  for (int i = 0; i < 6; i++) if (!dlopen(libs[i], RTLD_NOW)) fprintf(stderr, "dlopen failed %s\n", libs[i]);
-
-                  // ---- 3. live glass, ACTIVE window, several configurations ----
+                  NSString *trees = [out stringByAppendingPathComponent:@"trees"];
+                  [[NSFileManager defaultManager] createDirectoryAtPath:trees withIntermediateDirectories:YES attributes:nil error:nil];
+                  SEEN = [[NSMutableSet alloc] init];
                   [NSApplication sharedApplication];
                   [NSApp setActivationPolicy:NSApplicationActivationPolicyRegular];
                   [NSApp finishLaunching];
-                  [NSApp activateIgnoringOtherApps:YES];
-                  NSWindow *win = [[NSWindow alloc] initWithContentRect:NSMakeRect(100, 100, 900, 560)
-                                                              styleMask:(NSWindowStyleMaskTitled | NSWindowStyleMaskClosable | NSWindowStyleMaskResizable | NSWindowStyleMaskFullSizeContentView)
-                                                                backing:NSBackingStoreBuffered defer:NO];
-                  [win setTitle:@"Glass Active"];
+
+                  NSWindow *win = [[NSWindow alloc] initWithContentRect:NSMakeRect(60, 80, 900, 600)
+                      styleMask:(NSWindowStyleMaskTitled | NSWindowStyleMaskClosable | NSWindowStyleMaskMiniaturizable | NSWindowStyleMaskResizable | NSWindowStyleMaskFullSizeContentView)
+                      backing:NSBackingStoreBuffered defer:NO];
+                  [win setTitle:@"Replica Probe"];
                   WIN = win;
-                  NSToolbar *tb = [[NSToolbar alloc] initWithIdentifier:@"tb"];
+                  TBDelegate *tbd = [[TBDelegate alloc] init];
+                  NSToolbar *tb = [[NSToolbar alloc] initWithIdentifier:@"main"];
+                  [tb setDelegate:tbd];
                   [win setToolbar:tb];
-                  NSView *root = [[NSView alloc] initWithFrame:NSMakeRect(0, 0, 900, 560)];
+                  NSView *root = [[NSView alloc] initWithFrame:NSMakeRect(0, 0, 900, 600)];
                   [root setWantsLayer:YES];
                   CAGradientLayer *grad = [CAGradientLayer layer];
                   grad.colors = @[(id)[[NSColor systemPinkColor] CGColor], (id)[[NSColor systemOrangeColor] CGColor], (id)[[NSColor systemBlueColor] CGColor]];
                   grad.startPoint = CGPointMake(0, 0); grad.endPoint = CGPointMake(1, 1);
-                  grad.frame = root.bounds;
+                  grad.frame = [root bounds];
+                  [grad setAutoresizingMask:(kCALayerWidthSizable | kCALayerHeightSizable)];
                   [[root layer] addSublayer:grad];
-                  NSTextField *big = [NSTextField labelWithString:@"REFRACTION ||| TEST ||| 0123"];
-                  [big setFont:[NSFont systemFontOfSize:60 weight:NSFontWeightHeavy]];
-                  [big setFrame:NSMakeRect(20, 300, 880, 90)];
-                  [root addSubview:big];
                   [win setContentView:root];
-                  Class G = NSClassFromString(@"NSGlassEffectView");
-                  Class GC = NSClassFromString(@"NSGlassEffectContainerView");
-                  NSMutableArray *glassViews = [NSMutableArray array];
-                  NSView *container = root;
-                  if (GC) {
-                      container = [[GC alloc] initWithFrame:root.bounds];
-                      [root addSubview:container];
-                  }
-                  if (G) {
-                      for (int i = 0; i < 3; i++) {
-                          NSView *g = [[G alloc] initWithFrame:NSMakeRect(30 + i * 290, 280, 260, 130)];
-                          @try { [g setValue:@(i == 1 ? 1 : 0) forKey:@"style"]; } @catch (NSException *e) { }
-                          @try { [g setValue:@(i == 2 ? 65 : 28) forKey:@"cornerRadius"]; } @catch (NSException *e) { }
-                          NSTextField *t = [NSTextField labelWithString:(i == 1 ? @"clear" : (i == 2 ? @"capsule" : @"regular"))];
-                          @try { [g setValue:t forKey:@"contentView"]; } @catch (NSException *e) { [g addSubview:t]; }
-                          [container addSubview:g];
-                          [glassViews addObject:g];
-                      }
-                  } else { openOut(out, @"live_active_layers.txt"); P(@"NSGlassEffectView MISSING"); }
-                  [win makeKeyAndOrderFront:nil];
-                  [win orderFrontRegardless];
-                  [NSApp activateIgnoringOtherApps:YES];
-                  if ([NSApp respondsToSelector:@selector(activate)]) [NSApp performSelector:@selector(activate)];
-                  for (int tries = 0; tries < 10 && ![win isKeyWindow]; tries++) {
+
+                  for (int tries = 0; tries < 15 && ![win isKeyWindow]; tries++) {
                       [NSApp activateIgnoringOtherApps:YES];
                       if ([NSApp respondsToSelector:@selector(activate)]) [NSApp performSelector:@selector(activate)];
                       [win makeKeyAndOrderFront:nil];
                       pump(1.0);
                   }
-                  pump(1.0);
-                  [win makeKeyWindow];
-                  [win makeMainWindow];
-                  pump(2.0);
-                  openOut(out, @"window_state.txt");
-                  P([NSString stringWithFormat:@"isKey=%d isMain=%d appActive=%d", [win isKeyWindow], [win isMainWindow], [NSApp isActive]]);
-                  NSTask *cap = [[NSTask alloc] init];
-                  [cap setLaunchPath:@"/usr/sbin/screencapture"];
-                  [cap setArguments:@[@"-x", @"-o", [NSString stringWithFormat:@"-l%ld", (long)[win windowNumber]], [out stringByAppendingPathComponent:@"active_window.png"]]];
-                  @try { [cap launch]; [cap waitUntilExit]; } @catch (NSException *e) { }
-                  NSTask *cap2 = [[NSTask alloc] init];
-                  [cap2 setLaunchPath:@"/usr/sbin/screencapture"];
-                  [cap2 setArguments:@[@"-x", [out stringByAppendingPathComponent:@"full_screen.png"]]];
-                  @try { [cap2 launch]; [cap2 waitUntilExit]; } @catch (NSException *e) { }
-                  openOut(out, @"live_active_layers.txt");
-                  P([NSString stringWithFormat:@"isKey=%d isMain=%d appActive=%d", [win isKeyWindow], [win isMainWindow], [NSApp isActive]]);
-                  for (NSView *g in glassViews) {
-                      P(@"##### NSGlassEffectView");
-                      dumpProps(g, @"  ", [NSView class]);
-                  }
-                  if (GC) { P(@"##### glass container view"); dumpProps(container, @"  ", [NSView class]); }
-                  P(@"##### whole window content layer tree");
-                  walk([root layer], 0);
+                  openOut(out, [NSString stringWithFormat:@"window_state_%@.txt", mode]);
+                  P([NSString stringWithFormat:@"isKey=%d isMain=%d appActive=%d postEventAccess=%d glassBezel=%d", [win isKeyWindow], [win isMainWindow], [NSApp isActive], (int)CGPreflightPostEventAccess(), GLASS_BEZEL]);
 
-                  // ---- 5. interactions on video ----
-                  {
-                      [win setAppearance:nil]; grad.hidden = NO;
-                      for (NSView *v in glassViews) [v setHidden:YES];
-                      WIN = win;
-                      NSView *A = G ? [[G alloc] initWithFrame:NSMakeRect(40, 330, 220, 110)] : [[NSView alloc] initWithFrame:NSZeroRect];
-                      NSView *B = G ? [[G alloc] initWithFrame:NSMakeRect(460, 330, 220, 110)] : [[NSView alloc] initWithFrame:NSZeroRect];
-                      @try { [A setValue:@40 forKey:@"cornerRadius"]; [B setValue:@40 forKey:@"cornerRadius"]; } @catch (NSException *e) { }
-                      [container addSubview:A]; [container addSubview:B];
-                      NSButton *gb = [NSButton buttonWithTitle:@"Glass Button" target:nil action:nil];
+                  if (![mode isEqual:@"full"]) {
+                      runSweep(win, root, grad, out, [NSString stringWithFormat:@"sweep_%@.txt", mode]);
+                      if (F) fclose(F);
+                      return 0;
+                  }
+
+                  // ---------- scene ----------
+                  Class G = NSClassFromString(@"NSGlassEffectView");
+                  Class GC = NSClassFromString(@"NSGlassEffectContainerView");
+                  NSView *container = GC ? [[GC alloc] initWithFrame:[root bounds]] : root;
+                  if (container != root) { [container setAutoresizingMask:(NSViewWidthSizable | NSViewHeightSizable)]; [root addSubview:container]; }
+                  NSTextField *big = [NSTextField labelWithString:@"REFRACTION ||| 0123"];
+                  [big setFont:[NSFont systemFontOfSize:56 weight:NSFontWeightHeavy]];
+                  [big setFrame:NSMakeRect(20, 400, 860, 80)];
+                  [root addSubview:big positioned:NSWindowBelow relativeTo:nil];
+                  NSView *A = G ? [[G alloc] initWithFrame:NSMakeRect(40, 380, 220, 110)] : [[NSView alloc] initWithFrame:NSZeroRect];
+                  NSView *B = G ? [[G alloc] initWithFrame:NSMakeRect(470, 380, 220, 110)] : [[NSView alloc] initWithFrame:NSZeroRect];
+                  @try { [A setValue:@40 forKey:@"cornerRadius"]; [B setValue:@40 forKey:@"cornerRadius"]; } @catch (NSException *e) { }
+                  [container addSubview:A]; [container addSubview:B];
+                  NSButton *gb = [NSButton buttonWithTitle:@"Glass Button" target:nil action:nil];
           #if GLASS_BEZEL >= 0
-                      [gb setBezelStyle:(NSBezelStyle)GLASS_BEZEL];
+                  [gb setBezelStyle:(NSBezelStyle)GLASS_BEZEL];
           #endif
-                      [gb setControlSize:NSControlSizeLarge];
-                      [gb setFrame:NSMakeRect(40, 230, 180, 44)];
-                      NSButton *pb2 = [NSButton buttonWithTitle:@"Push Button" target:nil action:nil];
-                      [pb2 setFrame:NSMakeRect(250, 236, 140, 32)];
-                      NSButton *cb2 = [NSButton checkboxWithTitle:@"Checkbox" target:nil action:nil];
-                      [cb2 setFrame:NSMakeRect(420, 240, 120, 24)];
-                      NSSwitch *sw2 = [[NSSwitch alloc] initWithFrame:NSMakeRect(560, 236, 60, 32)];
-                      NSSlider *sl2 = [NSSlider sliderWithValue:20 minValue:0 maxValue:100 target:nil action:nil];
-                      [sl2 setFrame:NSMakeRect(40, 160, 300, 30)];
-                      NSTextField *tf2 = [NSTextField textFieldWithString:@"Focus me"];
-                      [tf2 setFrame:NSMakeRect(380, 160, 220, 26)];
-                      NSSegmentedControl *sg2 = [NSSegmentedControl segmentedControlWithLabels:@[@"One", @"Two", @"Three"] trackingMode:NSSegmentSwitchTrackingSelectOne target:nil action:nil];
-                      [sg2 setSelectedSegment:0];
-                      [sg2 setFrame:NSMakeRect(40, 100, 240, 30)];
-                      for (NSView *v in @[gb, pb2, cb2, sw2, sl2, tf2, sg2]) [container addSubview:v];
-                      [win makeKeyAndOrderFront:nil];
-                      pump(1.0);
+                  [gb setControlSize:NSControlSizeLarge];
+                  [gb setFrame:NSMakeRect(40, 300, 180, 44)];
+                  [gb setToolTip:@"This is a tooltip"];
+                  NSButton *pb2 = [NSButton buttonWithTitle:@"Push Button" target:nil action:nil];
+                  [pb2 setFrame:NSMakeRect(250, 306, 140, 32)];
+                  NSButton *cb2 = [NSButton checkboxWithTitle:@"Checkbox" target:nil action:nil];
+                  [cb2 setFrame:NSMakeRect(420, 310, 120, 24)];
+                  NSSwitch *sw2 = [[NSSwitch alloc] initWithFrame:NSMakeRect(560, 306, 60, 32)];
+                  NSPopUpButton *pop = [[NSPopUpButton alloc] initWithFrame:NSMakeRect(650, 306, 150, 32) pullsDown:NO];
+                  [pop addItemsWithTitles:@[@"First option", @"Second option", @"Third option", @"Fourth option"]];
+                  NSSlider *sl2 = [NSSlider sliderWithValue:20 minValue:0 maxValue:100 target:nil action:nil];
+                  [sl2 setFrame:NSMakeRect(40, 240, 300, 30)];
+                  NSTextField *tf2 = [NSTextField textFieldWithString:@"Focus me"];
+                  [tf2 setFrame:NSMakeRect(380, 244, 220, 26)];
+                  NSStepper *stp = [[NSStepper alloc] initWithFrame:NSMakeRect(620, 242, 20, 30)];
+                  NSSegmentedControl *sg2 = [NSSegmentedControl segmentedControlWithLabels:@[@"One", @"Two", @"Three"] trackingMode:NSSegmentSwitchTrackingSelectOne target:nil action:nil];
+                  [sg2 setSelectedSegment:0];
+                  [sg2 setFrame:NSMakeRect(40, 180, 240, 30)];
+                  NSScrollView *scroll = [[NSScrollView alloc] initWithFrame:NSMakeRect(320, 20, 540, 200)];
+                  [scroll setHasVerticalScroller:YES];
+                  NSTextView *tv = [[NSTextView alloc] initWithFrame:NSMakeRect(0, 0, 520, 200)];
+                  NSMutableString *lorem = [NSMutableString string];
+                  for (int i = 0; i < 80; i++) [lorem appendFormat:@"Line %d: The quick brown fox jumps over the lazy dog. Scroll edge test.\n", i];
+                  [tv setString:lorem];
+                  [scroll setDocumentView:tv];
+                  for (NSView *v in @[gb, pb2, cb2, sw2, pop, sl2, tf2, stp, sg2, scroll]) [container addSubview:v];
 
-                      NSString *movPath = [out stringByAppendingPathComponent:@"interaction.mov"];
-                      NSTask *rec = [[NSTask alloc] init];
-                      [rec setLaunchPath:@"/usr/sbin/screencapture"];
-                      [rec setArguments:@[@"-v", @"-V", @"60", @"-x", movPath]];
-                      REC0 = CFAbsoluteTimeGetCurrent();
-                      TL = fopen([[out stringByAppendingPathComponent:@"timeline.txt"] UTF8String], "w");
-                      @try { [rec launch]; } @catch (NSException *e) { T(@"screen recording failed to start"); }
-                      T([NSString stringWithFormat:@"recording started; postEventAccess=%d glassBezel=%d key=%d", (int)CGPreflightPostEventAccess(), GLASS_BEZEL, [win isKeyWindow]]);
+                  // sidebar window
+                  TableDS *tds = [[TableDS alloc] init];
+                  NSWindow *sbw = [[NSWindow alloc] initWithContentRect:NSMakeRect(200, 120, 760, 480)
+                      styleMask:(NSWindowStyleMaskTitled | NSWindowStyleMaskClosable | NSWindowStyleMaskResizable | NSWindowStyleMaskFullSizeContentView)
+                      backing:NSBackingStoreBuffered defer:NO];
+                  [sbw setTitle:@"Sidebar Window"];
+                  NSSplitViewController *svc = [[NSSplitViewController alloc] init];
+                  NSViewController *sideVC = [[NSViewController alloc] init];
+                  NSScrollView *sideScroll = [[NSScrollView alloc] initWithFrame:NSMakeRect(0, 0, 220, 480)];
+                  NSTableView *table = [[NSTableView alloc] initWithFrame:NSMakeRect(0, 0, 220, 480)];
+                  NSTableColumn *col = [[NSTableColumn alloc] initWithIdentifier:@"c"];
+                  [col setWidth:200];
+                  [table addTableColumn:col];
+                  [table setHeaderView:nil];
+                  [table setStyle:NSTableViewStyleSourceList];
+                  [table setDataSource:tds]; [table setDelegate:tds];
+                  [sideScroll setDocumentView:table];
+                  [sideVC setView:sideScroll];
+                  NSViewController *mainVC = [[NSViewController alloc] init];
+                  NSView *mainView = [[NSView alloc] initWithFrame:NSMakeRect(0, 0, 540, 480)];
+                  [mainView setWantsLayer:YES];
+                  [[mainView layer] setBackgroundColor:[[NSColor systemTealColor] CGColor]];
+                  [mainVC setView:mainView];
+                  [svc addSplitViewItem:[NSSplitViewItem sidebarWithViewController:sideVC]];
+                  [svc addSplitViewItem:[NSSplitViewItem splitViewItemWithViewController:mainVC]];
+                  [sbw setContentViewController:svc];
+                  NSToolbar *tb2 = [[NSToolbar alloc] initWithIdentifier:@"side"];
+                  [tb2 setDelegate:tbd];
+                  [sbw setToolbar:tb2];
 
-                      __block BOOL done = NO;
-                      dispatch_async(dispatch_get_global_queue(QOS_CLASS_USER_INITIATED, 0), ^{
-                          usleep(1500000);
-                          T(@"idle"); sampleGlass(gb, @"glassButton idle"); usleep(800000);
-                          T(@"hover glassButton"); glide(globalPt(win, gb, 0.5, 0.5), 0.6, NO);
-                          for (int i = 0; i < 8; i++) { sampleGlass(gb, @"glassButton hover"); usleep(150000); }
-                          T(@"press glassButton"); post(kCGEventLeftMouseDown, CUR);
-                          for (int i = 0; i < 8; i++) { sampleGlass(gb, @"glassButton pressed"); usleep(100000); }
-                          T(@"release glassButton"); post(kCGEventLeftMouseUp, CUR);
-                          for (int i = 0; i < 6; i++) { sampleGlass(gb, @"glassButton released"); usleep(100000); }
-                          T(@"press-drag-out glassButton"); post(kCGEventLeftMouseDown, CUR); usleep(400000);
-                          glide(globalPt(win, gb, 1.6, 0.5), 0.5, YES); usleep(400000);
-                          glide(globalPt(win, gb, 0.5, 0.5), 0.5, YES); usleep(300000); post(kCGEventLeftMouseUp, CUR); usleep(600000);
-                          T(@"hover pushButton"); glide(globalPt(win, pb2, 0.5, 0.5), 0.5, NO); usleep(900000);
-                          T(@"press pushButton"); post(kCGEventLeftMouseDown, CUR); usleep(700000); post(kCGEventLeftMouseUp, CUR); usleep(600000);
-                          T(@"click checkbox"); glide(globalPt(win, cb2, 0.08, 0.5), 0.5, NO); post(kCGEventLeftMouseDown, CUR); usleep(250000); post(kCGEventLeftMouseUp, CUR); usleep(900000);
-                          T(@"click switch"); glide(globalPt(win, sw2, 0.5, 0.5), 0.5, NO); post(kCGEventLeftMouseDown, CUR); usleep(120000); post(kCGEventLeftMouseUp, CUR); usleep(1200000);
-                          T(@"click switch back"); post(kCGEventLeftMouseDown, CUR); usleep(120000); post(kCGEventLeftMouseUp, CUR); usleep(1200000);
-                          T(@"drag slider"); glide(globalPt(win, sl2, 0.2, 0.5), 0.5, NO); post(kCGEventLeftMouseDown, CUR); usleep(300000);
-                          glide(globalPt(win, sl2, 0.85, 0.5), 1.0, YES); usleep(300000); post(kCGEventLeftMouseUp, CUR); usleep(800000);
-                          T(@"segmented click Three"); glide(globalPt(win, sg2, 0.83, 0.5), 0.5, NO); post(kCGEventLeftMouseDown, CUR); usleep(150000); post(kCGEventLeftMouseUp, CUR); usleep(900000);
-                          T(@"focus text field"); glide(globalPt(win, tf2, 0.5, 0.5), 0.5, NO); post(kCGEventLeftMouseDown, CUR); usleep(120000); post(kCGEventLeftMouseUp, CUR); usleep(1500000);
-                          T(@"move mouse away"); glide(CGPointMake(5, 700), 0.6, NO); usleep(500000);
-                          T(@"morph: B moves into A");
-                          dispatch_sync(dispatch_get_main_queue(), ^{
-                              [NSAnimationContext runAnimationGroup:^(NSAnimationContext *ctx) { ctx.duration = 1.5; [[B animator] setFrame:NSMakeRect(200, 330, 220, 110)]; } completionHandler:nil];
-                          });
-                          for (int i = 0; i < 12; i++) { sampleGlass(A, @"glassA during merge"); usleep(150000); }
-                          usleep(800000);
-                          T(@"morph: B moves out");
-                          dispatch_sync(dispatch_get_main_queue(), ^{
-                              [NSAnimationContext runAnimationGroup:^(NSAnimationContext *ctx) { ctx.duration = 1.5; [[B animator] setFrame:NSMakeRect(460, 330, 220, 110)]; } completionHandler:nil];
-                          });
-                          usleep(2200000);
-                          T(@"switch to dark");
-                          dispatch_sync(dispatch_get_main_queue(), ^{ [win setAppearance:[NSAppearance appearanceNamed:NSAppearanceNameDarkAqua]]; });
-                          usleep(1800000);
-                          T(@"switch to light");
-                          dispatch_sync(dispatch_get_main_queue(), ^{ [win setAppearance:[NSAppearance appearanceNamed:NSAppearanceNameAqua]]; });
-                          usleep(1800000);
-                          T(@"window inactive");
-                          dispatch_sync(dispatch_get_main_queue(), ^{
-                              NSWindow *o = [[NSWindow alloc] initWithContentRect:NSMakeRect(0, 0, 160, 120) styleMask:NSWindowStyleMaskTitled backing:NSBackingStoreBuffered defer:NO];
-                              [o makeKeyAndOrderFront:nil];
-                          });
-                          usleep(1800000);
-                          T(@"window active again");
-                          dispatch_sync(dispatch_get_main_queue(), ^{ [win makeKeyAndOrderFront:nil]; });
-                          usleep(1800000);
-                          T(@"end");
-                          done = YES;
+                  [win makeKeyAndOrderFront:nil];
+                  pump(1.5);
+
+                  // ---------- recorders ----------
+                  REC0 = CFAbsoluteTimeGetCurrent();
+                  TL = fopen([[out stringByAppendingPathComponent:@"timeline.txt"] UTF8String], "w");
+                  AF = fopen([[out stringByAppendingPathComponent:@"animations.txt"] UTF8String], "w");
+                  CF = fopen([[out stringByAppendingPathComponent:@"animation_curves.txt"] UTF8String], "w");
+                  SF = fopen([[out stringByAppendingPathComponent:@"glass_states.txt"] UTF8String], "w");
+                  NSTimer *tick = [NSTimer timerWithTimeInterval:(1.0 / 120.0) repeats:YES block:^(NSTimer *t) { scanAll(); }];
+                  [[NSRunLoop mainRunLoop] addTimer:tick forMode:NSRunLoopCommonModes];
+                  T([NSString stringWithFormat:@"start key=%d", [win isKeyWindow]]);
+                  dumpGlassAll(@"00 idle");
+                  walkWindows(trees, @"00 idle");
+
+                  __block BOOL done = NO;
+                  void (^onMain)(void (^)(void)) = ^(void (^blk)(void)) { dispatch_sync(dispatch_get_main_queue(), blk); };
+                  void (^snap)(NSString *) = ^(NSString *step) {
+                      dispatch_sync(dispatch_get_main_queue(), ^{ dumpGlassAll(step); walkWindows(trees, step); });
+                  };
+                  void (^click)(NSView *, CGFloat, double) = ^(NSView *v, CGFloat fx, double hold) {
+                      glide(globalPt(win, v, fx, 0.5), 0.45, NO);
+                      post(kCGEventLeftMouseDown, CUR); usleep((useconds_t)(hold * 1e6)); post(kCGEventLeftMouseUp, CUR);
+                  };
+                  dispatch_async(dispatch_get_global_queue(QOS_CLASS_USER_INITIATED, 0), ^{
+                      usleep(1200000);
+                      T(@"01 hover glass button"); glide(globalPt(win, gb, 0.5, 0.5), 0.6, NO); usleep(900000); snap(@"01 hover glass button");
+                      T(@"02 press glass button"); post(kCGEventLeftMouseDown, CUR); usleep(500000);
+                      for (int i = 0; i < 4; i++) { sampleGlass(gb, @"glass button pressed"); usleep(100000); }
+                      snap(@"02 press glass button");
+                      T(@"03 release glass button"); post(kCGEventLeftMouseUp, CUR); usleep(900000); snap(@"03 release glass button");
+                      T(@"04 press-drag-out"); post(kCGEventLeftMouseDown, CUR); usleep(300000);
+                      glide(globalPt(win, gb, 1.7, 0.5), 0.5, YES); usleep(500000); snap(@"04 dragged out");
+                      glide(globalPt(win, gb, 0.5, 0.5), 0.5, YES); usleep(300000); post(kCGEventLeftMouseUp, CUR); usleep(600000);
+                      T(@"05 tooltip wait"); glide(globalPt(win, gb, 0.3, 0.5), 0.3, NO); usleep(2800000); snap(@"05 tooltip");
+                      T(@"06 push button"); click(pb2, 0.5, 0.5); usleep(600000);
+                      T(@"07 checkbox"); click(cb2, 0.08, 0.2); usleep(900000); snap(@"07 checkbox on");
+                      T(@"08 switch on"); click(sw2, 0.5, 0.1); usleep(1200000); snap(@"08 switch on");
+                      T(@"09 switch off"); click(sw2, 0.5, 0.1); usleep(1200000);
+                      T(@"10 slider drag"); glide(globalPt(win, sl2, 0.2, 0.5), 0.4, NO); post(kCGEventLeftMouseDown, CUR); usleep(250000);
+                      glide(globalPt(win, sl2, 0.85, 0.5), 1.0, YES); usleep(200000); post(kCGEventLeftMouseUp, CUR); usleep(700000);
+                      T(@"11 segmented"); click(sg2, 0.83, 0.15); usleep(900000); snap(@"11 segmented");
+                      T(@"12 stepper"); click(stp, 0.5, 0.15); usleep(700000);
+                      T(@"13 focus text field"); click(tf2, 0.5, 0.1); usleep(1300000); snap(@"13 focus ring");
+                      T(@"14 popup menu open");
+                      dispatch_async(dispatch_get_main_queue(), ^{ [pop performClick:nil]; });
+                      usleep(1500000); snap(@"14 popup menu open");
+                      T(@"15 popup menu close"); dispatch_async(dispatch_get_main_queue(), ^{ [[pop menu] cancelTracking]; }); usleep(1000000);
+                      T(@"16 context menu open");
+                      NSMenu *ctx = [[NSMenu alloc] initWithTitle:@"ctx"];
+                      for (NSString *tt in @[@"Cut", @"Copy", @"Paste", @"-", @"Get Info", @"Rename", @"Share"]) {
+                          if ([tt isEqual:@"-"]) [ctx addItem:[NSMenuItem separatorItem]]; else [ctx addItemWithTitle:tt action:NULL keyEquivalent:@""];
+                      }
+                      dispatch_async(dispatch_get_main_queue(), ^{ [ctx popUpMenuPositioningItem:nil atLocation:NSMakePoint(500, 520) inView:root]; });
+                      usleep(1500000); snap(@"16 context menu open");
+                      T(@"17 context menu close"); dispatch_async(dispatch_get_main_queue(), ^{ [ctx cancelTracking]; }); usleep(1000000);
+                      T(@"18 popover show");
+                      __block NSPopover *po = nil;
+                      onMain(^{
+                          po = [[NSPopover alloc] init];
+                          NSViewController *pvc = [[NSViewController alloc] init];
+                          NSView *pv = [[NSView alloc] initWithFrame:NSMakeRect(0, 0, 260, 140)];
+                          NSTextField *pl = [NSTextField labelWithString:@"Popover content"]; [pl setFrame:NSMakeRect(20, 60, 220, 20)]; [pv addSubview:pl];
+                          [pvc setView:pv]; [po setContentViewController:pvc]; [po setBehavior:NSPopoverBehaviorApplicationDefined];
+                          [po showRelativeToRect:[gb bounds] ofView:gb preferredEdge:NSRectEdgeMaxY];
                       });
-                      CFAbsoluteTime limit = CFAbsoluteTimeGetCurrent() + 90;
-                      while (!done && CFAbsoluteTimeGetCurrent() < limit) pump(0.03);
-                      if (!done) T(@"driver timed out");
-                      @try { [rec interrupt]; } @catch (NSException *e) { }
-                      for (int i = 0; i < 100 && [rec isRunning]; i++) pump(0.1);
-                      T(@"recording stopped");
-                  }
-                  // ---- 4. parameter sweep: appearance x background x size ----
-                  openOut(out, @"sweep.txt");
-                  if ([glassViews count] > 0) {
-                      NSView *g = glassViews[0];
-                      [g setHidden:NO];
-                      NSArray *bgs = @[@[@"white", [NSColor whiteColor]], @[@"black", [NSColor blackColor]], @[@"gray", [NSColor grayColor]], @[@"gradient", [NSNull null]]];
-                      NSArray *aps = @[@[@"light", NSAppearanceNameAqua], @[@"dark", NSAppearanceNameDarkAqua]];
-                      NSArray *szs = @[@[@60, @30], @[@160, @60], @[@260, @130], @[@600, @300]];
-                      for (NSArray *ap in aps) {
-                          [win setAppearance:[NSAppearance appearanceNamed:ap[1]]];
-                          for (NSArray *bg in bgs) {
-                              if ([bg[1] isKindOfClass:[NSNull class]]) { grad.hidden = NO; }
-                              else { grad.hidden = YES; [[root layer] setBackgroundColor:[(NSColor *)bg[1] CGColor]]; }
-                              for (NSArray *sz in szs) {
-                                  [g setFrame:NSMakeRect(30, 30, [sz[0] doubleValue], [sz[1] doubleValue])];
-                                  [win makeKeyAndOrderFront:nil];
-                                  pump(1.0);
-                                  NSMutableArray *fs = [NSMutableArray array];
-                                  findGlassFilters([root layer], fs, 0);
-                                  for (id f in fs) P([NSString stringWithFormat:@"%@ %@ %@x%@ key=%d | %@", ap[0], bg[0], sz[0], sz[1], [win isKeyWindow], filterLine(f)]);
-                              }
-                          }
-                      }
+                      usleep(1500000); snap(@"18 popover");
+                      T(@"19 popover close"); onMain(^{ [po close]; }); usleep(1000000);
+                      T(@"20 alert sheet");
+                      __block NSAlert *al = nil;
+                      onMain(^{
+                          al = [[NSAlert alloc] init];
+                          [al setMessageText:@"Delete this item?"]; [al setInformativeText:@"This action can't be undone."];
+                          [al addButtonWithTitle:@"Delete"]; [al addButtonWithTitle:@"Cancel"];
+                          [al beginSheetModalForWindow:win completionHandler:^(NSModalResponse r) { }];
+                      });
+                      usleep(1800000); snap(@"20 alert sheet");
+                      T(@"21 alert close"); onMain(^{ [win endSheet:[al window]]; }); usleep(1200000);
+                      T(@"22 scroll"); onMain(^{
+                          [NSAnimationContext runAnimationGroup:^(NSAnimationContext *c) { c.duration = 1.0; [[[scroll contentView] animator] setBoundsOrigin:NSMakePoint(0, 400)]; } completionHandler:nil];
+                      });
+                      usleep(1400000); snap(@"22 scrolled");
+                      T(@"23 morph in"); onMain(^{ [NSAnimationContext runAnimationGroup:^(NSAnimationContext *c) { c.duration = 1.5; [[B animator] setFrame:NSMakeRect(210, 380, 220, 110)]; } completionHandler:nil]; });
+                      usleep(1800000); snap(@"23 merged");
+                      T(@"24 morph out"); onMain(^{ [NSAnimationContext runAnimationGroup:^(NSAnimationContext *c) { c.duration = 1.5; [[B animator] setFrame:NSMakeRect(470, 380, 220, 110)]; } completionHandler:nil]; });
+                      usleep(1800000);
+                      T(@"25 sidebar window"); onMain(^{ [sbw makeKeyAndOrderFront:nil]; }); usleep(1800000); snap(@"25 sidebar window");
+                      T(@"26 sidebar collapse"); onMain(^{ [svc toggleSidebar:nil]; }); usleep(1500000); snap(@"26 sidebar collapsed");
+                      T(@"27 sidebar expand"); onMain(^{ [svc toggleSidebar:nil]; }); usleep(1500000);
+                      T(@"28 sidebar window close"); onMain(^{ [sbw orderOut:nil]; [win makeKeyAndOrderFront:nil]; }); usleep(1200000);
+                      T(@"29 dark"); onMain(^{ [win setAppearance:[NSAppearance appearanceNamed:NSAppearanceNameDarkAqua]]; }); usleep(1500000); snap(@"29 dark");
+                      T(@"30 light"); onMain(^{ [win setAppearance:[NSAppearance appearanceNamed:NSAppearanceNameAqua]]; }); usleep(1500000);
+                      T(@"31 inactive"); onMain(^{
+                          NSWindow *o = [[NSWindow alloc] initWithContentRect:NSMakeRect(0, 0, 160, 120) styleMask:NSWindowStyleMaskTitled backing:NSBackingStoreBuffered defer:NO];
+                          [o setReleasedWhenClosed:NO]; [o makeKeyAndOrderFront:nil];
+                      });
+                      usleep(1500000); snap(@"31 inactive");
+                      T(@"32 active again"); onMain(^{ [win makeKeyAndOrderFront:nil]; }); usleep(1500000);
+                      T(@"33 new window open"); __block NSWindow *nw = nil;
+                      onMain(^{ nw = [[NSWindow alloc] initWithContentRect:NSMakeRect(300, 200, 400, 260) styleMask:(NSWindowStyleMaskTitled | NSWindowStyleMaskClosable) backing:NSBackingStoreBuffered defer:NO];
+                                [nw setReleasedWhenClosed:NO]; [nw setAnimationBehavior:NSWindowAnimationBehaviorDocumentWindow]; [nw makeKeyAndOrderFront:nil]; });
+                      usleep(1500000);
+                      T(@"34 new window close"); onMain(^{ [nw close]; }); usleep(1200000);
+                      T(@"end");
+                      done = YES;
+                  });
+                  CFAbsoluteTime limit = CFAbsoluteTimeGetCurrent() + 150;
+                  while (!done && CFAbsoluteTimeGetCurrent() < limit) pump(0.02);
+                  if (!done) T(@"driver timed out");
+                  [tick invalidate];
+                  T(@"recorders stopped");
+                  if (AF) fflush(AF); if (CF) fflush(CF); if (SF) fflush(SF);
 
-                      // private glass states: interaction (hover/press), lensing, variants
-                      [win setAppearance:nil]; grad.hidden = NO;
-                      [g setFrame:NSMakeRect(30, 280, 260, 130)];
-                      for (NSString *k in @[@"_interactionState", @"_contentLensing", @"_subduedState", @"_scrimState", @"_variant", @"_adaptiveAppearance"]) {
-                          NSNumber *orig = nil;
-                          @try { orig = [g valueForKey:k]; } @catch (NSException *e) { continue; }
-                          for (int val = 0; val <= 4; val++) {
-                              @try { [g setValue:@(val) forKey:k]; } @catch (NSException *e) { P([NSString stringWithFormat:@"STATE %@=%d not settable", k, val]); break; }
-                              pump(0.8);
-                              NSMutableArray *fs = [NSMutableArray array];
-                              findGlassFilters([root layer], fs, 0);
-                              for (id f in fs) P([NSString stringWithFormat:@"STATE %@=%d | %@", k, val, filterLine(f)]);
-                          }
-                          @try { if (orig) [g setValue:orig forKey:k]; } @catch (NSException *e) { }
-                          pump(0.5);
-                      }
-                      // inactive vs active comparison
-                      [win setAppearance:nil]; grad.hidden = NO;
-                      [g setFrame:NSMakeRect(30, 280, 260, 130)];
-                      NSWindow *other = [[NSWindow alloc] initWithContentRect:NSMakeRect(0, 0, 200, 200) styleMask:NSWindowStyleMaskTitled backing:NSBackingStoreBuffered defer:NO];
-                      [other makeKeyAndOrderFront:nil];
-                      pump(1.5);
-                      NSMutableArray *fs = [NSMutableArray array];
-                      findGlassFilters([root layer], fs, 0);
-                      for (id f in fs) P([NSString stringWithFormat:@"INACTIVE key=%d | %@", [win isKeyWindow], filterLine(f)]);
-                      [win makeKeyAndOrderFront:nil];
-                      pump(1.5);
-                      fs = [NSMutableArray array];
-                      findGlassFilters([root layer], fs, 0);
-                      for (id f in fs) P([NSString stringWithFormat:@"ACTIVE key=%d | %@", [win isKeyWindow], filterLine(f)]);
-                  }
+                  // ---------- isolated sweep ----------
+                  [sbw orderOut:nil];
+                  [win makeKeyAndOrderFront:nil];
+                  pump(1.0);
+                  runSweep(win, root, grad, out, @"sweep_normal.txt");
                   fprintf(stderr, "done\n");
                   if (F) fclose(F);
               }
               return 0;
           }
           OBJC_EOF
-          OUT="$RUNNER_TEMP/glassfinal"; mkdir -p "$OUT"
+          set +e
+          OUT="$RUNNER_TEMP/replica"; mkdir -p "$OUT/frames"
           sw_vers > "$OUT/os.txt"
           SDK=$(xcrun --show-sdk-path)
-          grep -rhoE 'NSBezelStyleGlass[A-Za-z]*[^,]*' "$SDK/System/Library/Frameworks/AppKit.framework/Headers/" > "$OUT/sdk_glass_bezel.txt" 2>/dev/null
-          grep -rhE 'NSGlassEffectViewStyle[A-Za-z]* *=|NSBezelStyle[A-Za-z]* *= *[0-9]+' "$SDK/System/Library/Frameworks/AppKit.framework/Headers/" >> "$OUT/sdk_glass_bezel.txt" 2>/dev/null
-          GB=$(grep -hoE 'NSBezelStyleGlass *= *[0-9]+' "$SDK/System/Library/Frameworks/AppKit.framework/Headers/"*.h 2>/dev/null | grep -oE '[0-9]+$' | head -1)
+          GB=$(grep -rhoE 'NSBezelStyleGlass[^=,]*= *[0-9]+' "$SDK/System/Library/Frameworks/AppKit.framework/Headers/" 2>/dev/null | grep -oE '[0-9]+$' | head -1)
           [ -z "$GB" ] && GB=-1
-          echo "glass bezel = $GB"; cat "$OUT/sdk_glass_bezel.txt"
-          APP="$RUNNER_TEMP/GlassProbe.app"; mkdir -p "$APP/Contents/MacOS"
+          echo "glass bezel = $GB" | tee "$OUT/glass_bezel.txt"
+          APP="$RUNNER_TEMP/ReplicaProbe.app"; mkdir -p "$APP/Contents/MacOS"
           cat > "$APP/Contents/Info.plist" <<'PLIST_EOF'
           <?xml version="1.0" encoding="UTF-8"?>
           <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
           <plist version="1.0"><dict>
-          <key>CFBundleIdentifier</key><string>dev.probe.glass</string>
-          <key>CFBundleName</key><string>GlassProbe</string>
-          <key>CFBundleExecutable</key><string>GlassProbe</string>
+          <key>CFBundleIdentifier</key><string>dev.probe.replica</string>
+          <key>CFBundleName</key><string>ReplicaProbe</string>
+          <key>CFBundleExecutable</key><string>ReplicaProbe</string>
           <key>CFBundlePackageType</key><string>APPL</string>
           <key>CFBundleShortVersionString</key><string>1.0</string>
           <key>LSMinimumSystemVersion</key><string>26.0</string>
           <key>NSPrincipalClass</key><string>NSApplication</string>
           </dict></plist>
           PLIST_EOF
-          clang -fobjc-exceptions -fblocks -Wno-everything -DGLASS_BEZEL=$GB -framework AppKit -framework QuartzCore -framework ApplicationServices "$GITHUB_WORKSPACE_SCRIPTS/inspect5.m" -o "$APP/Contents/MacOS/GlassProbe" > "$OUT/compile_log.txt" 2>&1
-          if [ ! -x "$APP/Contents/MacOS/GlassProbe" ] && [ "$GB" != "-1" ]; then
-            echo "retry without glass bezel" >> "$OUT/compile_log.txt"
-            clang -fobjc-exceptions -fblocks -Wno-everything -DGLASS_BEZEL=-1 -framework AppKit -framework QuartzCore -framework ApplicationServices "$GITHUB_WORKSPACE_SCRIPTS/inspect5.m" -o "$APP/Contents/MacOS/GlassProbe" >> "$OUT/compile_log.txt" 2>&1
-          fi
+          build() {
+            clang -fobjc-exceptions -fblocks -Wno-everything -DGLASS_BEZEL=$1 -framework AppKit -framework QuartzCore -framework ApplicationServices \
+              "$GITHUB_WORKSPACE_SCRIPTS/replica.m" -o "$APP/Contents/MacOS/ReplicaProbe" >> "$OUT/compile_log.txt" 2>&1
+          }
+          build $GB
+          if [ ! -x "$APP/Contents/MacOS/ReplicaProbe" ] && [ "$GB" != "-1" ]; then echo "retry without glass bezel" >> "$OUT/compile_log.txt"; build -1; fi
           echo "== compile log =="; cat "$OUT/compile_log.txt"
           codesign --force -s - "$APP" > /dev/null 2>&1
-          # backup recorder from the shell, in case the app is not allowed to record
-          screencapture -v -V 150 -x "$OUT/interaction_shell.mov" > /dev/null 2>&1 &
-          SHREC=$!
-          ( for i in $(seq 1 60); do osascript -e 'tell application id "dev.probe.glass" to activate' > /dev/null 2>&1; sleep 1; done ) &
-          NUDGE=$!
-          open -n -W --stdout "$OUT/run_stdout.txt" --stderr "$OUT/run_log.txt" "$APP" --args "$OUT"
-          echo "open exit $?" >> "$OUT/run_log.txt"
-          kill $NUDGE 2> /dev/null
-          kill -INT $SHREC 2> /dev/null; sleep 5
-          echo "== run log =="; cat "$OUT/run_log.txt"
-          echo "== window state =="; cat "$OUT/window_state.txt"
-          echo "== timeline =="; head -60 "$OUT/timeline.txt"
-          grep -E 'RefractionAmount|RefractionHeight' "$OUT/live_active_layers.txt" | sort | uniq -c
-          grep -c '' "$OUT/sweep.txt"; grep -E 'ACTIVE|STATE _interactionState' "$OUT/sweep.txt" | cut -c1-300 | head -20
-          ls -la "$OUT"
+          run_probe() {
+            ( for i in $(seq 1 $3); do osascript -e 'tell application id "dev.probe.replica" to activate' > /dev/null 2>&1; sleep 1; done ) &
+            local NUDGE=$!
+            open -n -W --stdout "$OUT/stdout_$2.txt" --stderr "$OUT/stderr_$2.txt" "$APP" --args "$OUT" "$2"
+            echo "open exit $? ($2)" >> "$OUT/stderr_$2.txt"
+            kill $NUDGE 2> /dev/null
+          }
+          # frames from the shell (the app itself is not allowed to capture the screen)
+          ( i=0; while [ $i -lt 700 ] && [ ! -f "$OUT/.stop" ]; do screencapture -x -t jpg "$OUT/frames/f_$(printf %04d $i)_$(date +%s.%N | cut -c1-14).jpg" 2>/dev/null; i=$((i+1)); sleep 0.15; done ) &
+          FRAMES=$!
+          screencapture -V 140 -x "$OUT/interaction_shell.mov" 2> "$OUT/video_err.txt" &
+          VID=$!
+          run_probe "$OUT" full 200
+          touch "$OUT/.stop"; kill $FRAMES 2>/dev/null; kill -INT $VID 2>/dev/null; sleep 4
+          # accessibility passes (sweep only)
+          defaults write com.apple.universalaccess reduceTransparency -bool true 2> "$OUT/a11y_err.txt"
+          run_probe "$OUT" reduceTransparency 90
+          defaults write com.apple.universalaccess reduceTransparency -bool false 2>> "$OUT/a11y_err.txt"
+          defaults write com.apple.universalaccess increaseContrast -bool true 2>> "$OUT/a11y_err.txt"
+          run_probe "$OUT" increaseContrast 90
+          defaults write com.apple.universalaccess increaseContrast -bool false 2>> "$OUT/a11y_err.txt"
+          rm -f "$OUT/.stop"
+          echo "== stderr =="; tail -5 "$OUT"/stderr_*.txt
+          echo "== window =="; cat "$OUT"/window_state_*.txt
+          echo "== timeline =="; grep -v SAMPLE "$OUT/timeline.txt" | head -50
+          echo "animations captured: $(wc -l < "$OUT/animations.txt")"; grep -c SPRING "$OUT/animations.txt"
+          echo "frames: $(ls "$OUT/frames" | wc -l)"
+          ls "$OUT/trees" | head -40
+          du -sh "$OUT"/* > "$OUT/sizes.txt"; cat "$OUT/sizes.txt"
           true
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: glassfinal
-          path: ${{ runner.temp }}/glassfinal
+          name: replica
+          path: ${{ runner.temp }}/replica
+          if-no-files-found: warn
+  sysui:
+    runs-on: macos-26
+    timeout-minutes: 25
+    steps:
+      - name: System UI packages and screenshots
+        shell: bash
+        run: |
+          set +e
+          OUT="$RUNNER_TEMP/sysui"; mkdir -p "$OUT/packages" "$OUT/shots" "$OUT/plists"
+          sw_vers > "$OUT/os.txt"
+          # 1. Core Animation packages (.ca / .caar / .capackage / .caml): layer trees + animations of system UI
+          ROOTS="/System/Library/CoreServices /System/Library/PrivateFrameworks /System/Library/Frameworks /System/Applications /System/Library/ExtensionKit"
+          sudo find $ROOTS \( -name "*.ca" -o -name "*.caar" -o -name "*.capackage" -o -name "*.caml" \) 2>/dev/null > "$OUT/ca_packages_all.txt"
+          echo "ca packages found: $(wc -l < "$OUT/ca_packages_all.txt")"
+          TOTAL=0
+          while read -r p; do
+            sz=$(du -sk "$p" 2>/dev/null | cut -f1); [ -z "$sz" ] && continue
+            [ $((TOTAL + sz)) -gt 400000 ] && continue
+            dst="$OUT/packages/$(echo "$p" | sed 's#^/##; s#/#__#g')"
+            cp -R "$p" "$dst" 2>/dev/null && TOTAL=$((TOTAL + sz))
+          done < "$OUT/ca_packages_all.txt"
+          echo "copied KB: $TOTAL"
+          # 2. system UI apps: resource listings + their plists
+          for app in Dock ControlCenter SystemUIServer NotificationCenter Spotlight WindowManager Finder loginwindow; do
+            for base in /System/Library/CoreServices /System/Applications; do
+              a="$base/$app.app"; [ -d "$a" ] || continue
+              ls -laR "$a/Contents/Resources" > "$OUT/plists/${app}_resources.txt" 2>&1
+              cp "$a/Contents/Info.plist" "$OUT/plists/${app}_Info.plist" 2>/dev/null
+            done
+          done
+          defaults read com.apple.dock > "$OUT/plists/dock_defaults.txt" 2>&1
+          defaults read com.apple.controlcenter > "$OUT/plists/controlcenter_defaults.txt" 2>&1
+          defaults read com.apple.universalaccess > "$OUT/plists/universalaccess_defaults.txt" 2>&1
+          # 3. screenshots of system UI the runner can open
+          shot() { sleep "$2"; screencapture -x "$OUT/shots/$1.png" 2>> "$OUT/shots/errors.txt"; }
+          shot 00_desktop 1
+          open -a "Mission Control" 2>> "$OUT/shots/errors.txt"; shot 01_mission_control 1.5; open -a "Mission Control"; sleep 1.5
+          open ~ ; shot 02_finder_window 2.5
+          open -a "System Settings" 2>> "$OUT/shots/errors.txt"; shot 03_system_settings 4
+          osascript -e 'tell application "System Settings" to quit' 2>/dev/null; sleep 1
+          open -a "Calculator"; shot 04_calculator 2.5
+          open -a "Notes" 2>/dev/null; shot 05_notes 3.5
+          open -a "Apps" 2>> "$OUT/shots/errors.txt"; shot 06_apps_launcher 2.5
+          osascript -e 'tell application "System Events" to tell process "ControlCenter" to click menu bar item 2 of menu bar 1' 2>> "$OUT/shots/errors.txt"; shot 07_control_center 2
+          osascript -e 'tell application "System Events" to key code 53' 2>/dev/null
+          osascript -e 'tell application "System Events" to keystroke space using command down' 2>> "$OUT/shots/errors.txt"; shot 08_spotlight 2
+          osascript -e 'tell application "System Events" to key code 53' 2>/dev/null
+          defaults write com.apple.dock magnification -bool true; defaults write com.apple.dock largesize -int 96; killall Dock; shot 09_dock_restarted 3
+          # 4. can the runner record video from the shell?
+          screencapture -V 6 -x "$OUT/shots/video_test.mov" 2>> "$OUT/shots/errors.txt"
+          ls -la "$OUT/shots"; cat "$OUT/shots/errors.txt" | head -20
+          du -sh "$OUT"/* > "$OUT/sizes.txt"; cat "$OUT/sizes.txt"
+          true
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: sysui
+          path: ${{ runner.temp }}/sysui
           if-no-files-found: warn
