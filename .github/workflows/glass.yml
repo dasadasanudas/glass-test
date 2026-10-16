@@ -1,0 +1,46 @@
+name: grab-liquid-glass
+on: workflow_dispatch
+jobs:
+  grab:
+    runs-on: macos-26
+    timeout-minutes: 60
+    steps:
+      - name: Collect glass files
+        shell: bash
+        run: |
+          set +e
+          OUT="$RUNNER_TEMP/glass"; mkdir -p "$OUT/metallibs" "$OUT/materials"
+          sw_vers > "$OUT/os.txt"; uname -m >> "$OUT/os.txt"
+
+          # 1. inventory of every shader library on the system
+          sudo find /System/Library /System/Volumes/Preboot/Cryptexes -name "*.metallib" 2>/dev/null > "$OUT/metallib_paths.txt"
+          while read -r f; do ls -l "$f"; done < "$OUT/metallib_paths.txt" > "$OUT/all_metallibs.txt"
+
+          # 2. copy likely candidates (key frameworks OR glass-ish strings), skip >40MB
+          KEY='QuartzCore|CoreMaterial|SwiftUI|AppKit|CoreImage|SkyLight|UIKitCore|CoreUI'
+          WORDS='glass|refract|lens|liquid|specular|chromatic|backdrop|sdf|vibran'
+          while read -r f; do
+            sz=$(stat -f%z "$f")
+            [ "$sz" -gt 41943040 ] && continue
+            if echo "$f" | grep -qE "$KEY" || strings -a "$f" | grep -qiE "$WORDS"; then
+              cp "$f" "$OUT/metallibs/$(echo "$f" | sed 's#^/##; s#/#__#g')"
+            fi
+          done < "$OUT/metallib_paths.txt"
+
+          # 3. material recipes (readable plists that define system materials)
+          sudo ditto /System/Library/PrivateFrameworks/CoreMaterial.framework/Versions/A/Resources "$OUT/materials/CoreMaterial" 2>/dev/null
+          sudo ditto /System/Library/PrivateFrameworks/CoreMaterial.framework/Resources "$OUT/materials/CoreMaterial2" 2>/dev/null
+          sudo find /System/Library \( -name "*.materialrecipe" -o -name "*.visualstyleset" \) 2>/dev/null | while read -r f; do
+            cp "$f" "$OUT/materials/$(echo "$f" | sed 's#^/##; s#/#__#g')"
+          done
+
+          # 4. glass-related symbol names from the system code cache
+          for c in /System/Volumes/Preboot/Cryptexes/OS/System/Library/dyld/dyld_shared_cache_arm64e*; do
+            strings -a "$c"
+          done | grep -iE 'liquidglass|glasseffect|glassmaterial|_glass|Glass[A-Z]|refraction' | sort -u | head -50000 > "$OUT/glass_symbols.txt"
+
+          du -sh "$OUT"/* > "$OUT/sizes.txt"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: glass
+          path: ${{ runner.temp }}/glass
