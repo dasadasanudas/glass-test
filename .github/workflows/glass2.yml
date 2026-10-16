@@ -1,0 +1,341 @@
+name: glass-deep
+on: workflow_dispatch
+jobs:
+  glass:
+    runs-on: macos-26
+    timeout-minutes: 60
+    steps:
+      - name: Write helper scripts
+        shell: bash
+        run: |
+          export GITHUB_WORKSPACE_SCRIPTS="$RUNNER_TEMP/scripts"; mkdir -p "$GITHUB_WORKSPACE_SCRIPTS"
+          cat > "$GITHUB_WORKSPACE_SCRIPTS/kernels.py" <<'PY1_EOF'
+          import mmap, glob, re, sys, os
+          out = sys.argv[1]
+          os.makedirs(out, exist_ok=True)
+          pats = [b'kernel vec4', b'kernel vec2', b'kernel float', b'[[stitchable]]', b'#include <metal_stdlib>', b'using namespace metal', b'float4 fragment', b'fragment float4']
+          kw = re.compile(rb'(?i)glass|refract|lozenge|torus|sdf|lens|highlight|displac|meniscus|levitation|specular|chromatic')
+          GL = sys.argv[2] if len(sys.argv) > 2 else '/System/Volumes/Preboot/Cryptexes/OS/System/Library/dyld/dyld_shared_cache_arm64e*'
+          files = [f for f in sorted(glob.glob(GL))
+                   if not f.endswith(('.map', '.atlas', '.json'))]
+          allk = open(os.path.join(out, 'all_kernel_names.txt'), 'w')
+          g = open(os.path.join(out, 'glass_kernels_source.txt'), 'w')
+          o = open(os.path.join(out, 'other_kernels_source.txt'), 'w')
+          nk = ng = 0
+          for f in files:
+              with open(f, 'rb') as fh:
+                  try:
+                      mm = mmap.mmap(fh.fileno(), 0, access=mmap.ACCESS_READ)
+                  except Exception as e:
+                      print('skip', f, e); continue
+                  seen = set()
+                  for p in pats:
+                      i = mm.find(p)
+                      while i != -1:
+                          z = mm.rfind(b'\0', max(0, i - 400000), i)
+                          s = z + 1 if z != -1 else max(0, i - 400000)
+                          e = mm.find(b'\0', i)
+                          if e == -1: e = len(mm)
+                          if s not in seen and e - s < 2000000:
+                              seen.add(s)
+                              txt = mm[s:e]
+                              for m in re.finditer(rb'kernel\s+\w+\s+(\w+)\s*\(', txt):
+                                  allk.write(m.group(1).decode('latin1') + '\n'); nk += 1
+                              dst = g if kw.search(txt) else o
+                              if dst is g: ng += 1
+                              dst.write('===== %s @0x%x len %d\n' % (os.path.basename(f), s, e - s))
+                              dst.write(txt.decode('latin1')); dst.write('\n\n')
+                          i = mm.find(p, max(e, i + 1))
+                  mm.close()
+          print('kernel names', nk, 'glass blocks', ng)
+          PY1_EOF
+          cat > "$GITHUB_WORKSPACE_SCRIPTS/split2.py" <<'PY2_EOF'
+          import sys, struct, os, re
+          src, outdir, cap = sys.argv[1], sys.argv[2], int(sys.argv[3])
+          os.makedirs(outdir, exist_ok=True)
+          kw = re.compile(rb'(?i)glass|refract|lozenge|torus|sdf|lens|highlight|displac|meniscus|levitation|specular|chromatic|backdrop|vibran')
+          d = open(src, 'rb').read()
+          tag = re.sub(r'[^A-Za-z0-9]+', '_', src.strip('/'))[-90:]
+          M = b'\xde\xc0\x17\x0b'
+          idx = open(os.path.join(outdir, tag + '__index.txt'), 'w')
+          n = kept = used = 0
+          i = d.find(M)
+          while i != -1 and i + 20 <= len(d):
+              magic, ver, off, size, cpu = struct.unpack_from('<5I', d, i)
+              if 0 < size < len(d) and 0 < off < 4096 and i + off + size <= len(d):
+                  mod = d[i:i + off + size]
+                  hit = kw.search(mod)
+                  names = sorted(set(x.decode('latin1') for x in re.findall(rb'[A-Za-z_][A-Za-z0-9_]{8,120}', mod)
+                                     if kw.search(x)))[:40]
+                  idx.write('%05d size=%d hit=%d %s\n' % (n, len(mod), 1 if hit else 0, ' '.join(names)))
+                  if hit and used + len(mod) <= cap:
+                      open(os.path.join(outdir, '%s__%05d.bc' % (tag, n)), 'wb').write(mod)
+                      kept += 1; used += len(mod)
+                  n += 1
+                  i = d.find(M, i + off + size)
+              else:
+                  i = d.find(M, i + 4)
+          print(src, 'modules', n, 'kept', kept, 'bytes', used)
+          PY2_EOF
+          cat > "$GITHUB_WORKSPACE_SCRIPTS/inspect.m" <<'OBJC_EOF'
+          #import <AppKit/AppKit.h>
+          #import <QuartzCore/QuartzCore.h>
+          #import <objc/runtime.h>
+          #import <objc/message.h>
+          #import <dlfcn.h>
+
+          static FILE *F = NULL;
+          static void P(NSString *s) { if (F) { fprintf(F, "%s\n", [s UTF8String]); fflush(F); } }
+          static void openOut(NSString *dir, NSString *name) {
+              if (F) fclose(F);
+              F = fopen([[dir stringByAppendingPathComponent:name] UTF8String], "w");
+          }
+
+          static NSString *clip(id v) {
+              NSString *d = [[v description] stringByReplacingOccurrencesOfString:@"\n" withString:@" "];
+              if ([d length] > 600) d = [[d substringToIndex:600] stringByAppendingString:@"..."];
+              return d ? d : @"(nil)";
+          }
+
+          static BOOL safeType(const char *a) {
+              if (!a || strlen(a) < 2) return NO;
+              char t = a[1];
+              if (t == '^' || t == '*' || t == ':' || t == '#' || t == '?' || t == 'r') return NO;
+              if (t == '@' && a[2] == '?') return NO;
+              return YES;
+          }
+
+          static void dumpProps(id o, NSString *ind, Class stopAt) {
+              NSSet *skip = [NSSet setWithObjects:@"delegate", @"sublayers", @"subviews", @"superlayer", @"superview", @"window",
+                             @"contents", @"layoutManager", @"mask", @"style", @"actions", @"description", @"debugDescription",
+                             @"hash", @"superclass", @"context", @"presentationLayer", @"modelLayer", @"nextResponder",
+                             @"menu", @"layer", @"contentView", @"enclosingScrollView", nil];
+              NSMutableSet *seen = [NSMutableSet set];
+              Class c = object_getClass(o);
+              while (c && c != [NSObject class] && c != stopAt) {
+                  unsigned int n = 0;
+                  objc_property_t *ps = class_copyPropertyList(c, &n);
+                  for (unsigned int i = 0; i < n; i++) {
+                      NSString *pn = [NSString stringWithUTF8String:property_getName(ps[i])];
+                      const char *a = property_getAttributes(ps[i]);
+                      if ([seen containsObject:pn] || [skip containsObject:pn] || !safeType(a)) continue;
+                      [seen addObject:pn];
+                      @try {
+                          id v = [o valueForKey:pn];
+                          P([NSString stringWithFormat:@"%@.%@ = %@", ind, pn, clip(v)]);
+                      } @catch (NSException *e) { }
+                  }
+                  free(ps);
+                  c = class_getSuperclass(c);
+              }
+          }
+
+          static void dumpFilter(id f, NSString *ind) {
+              P([NSString stringWithFormat:@"%@filter %s : %@", ind, class_getName(object_getClass(f)), clip(f)]);
+              for (NSString *k in @[@"name", @"type", @"enabled", @"inputKeys", @"outputKeys"]) {
+                  @try { if ([f respondsToSelector:NSSelectorFromString(k)]) P([NSString stringWithFormat:@"%@  .%@ = %@", ind, k, clip([f valueForKey:k])]); } @catch (NSException *e) { }
+              }
+              @try {
+                  if ([f respondsToSelector:NSSelectorFromString(@"inputKeys")]) {
+                      for (NSString *k in [f valueForKey:@"inputKeys"]) {
+                          @try { P([NSString stringWithFormat:@"%@  [%@] = %@", ind, k, clip([f valueForKey:k])]); } @catch (NSException *e) { }
+                      }
+                  }
+              } @catch (NSException *e) { }
+              dumpProps(f, [ind stringByAppendingString:@"  "], [NSObject class]);
+          }
+
+          static void walk(CALayer *l, int depth) {
+              if (!l || depth > 30) return;
+              NSString *ind = [@"" stringByPaddingToLength:depth * 2 withString:@" " startingAtIndex:0];
+              CGRect fr = [l frame];
+              P([NSString stringWithFormat:@"%@<%s> frame={%.1f,%.1f,%.1f,%.1f} cornerRadius=%.2f opacity=%.2f",
+                 ind, class_getName(object_getClass(l)), fr.origin.x, fr.origin.y, fr.size.width, fr.size.height, [l cornerRadius], [l opacity]]);
+              for (NSString *k in @[@"filters", @"backgroundFilters", @"compositingFilter"]) {
+                  id v = nil;
+                  @try { v = [l valueForKey:k]; } @catch (NSException *e) { }
+                  if (!v) continue;
+                  NSArray *arr = [v isKindOfClass:[NSArray class]] ? v : @[v];
+                  for (id f in arr) { P([NSString stringWithFormat:@"%@  %@:", ind, k]); dumpFilter(f, [ind stringByAppendingString:@"    "]); }
+              }
+              if (object_getClass(l) != [CALayer class]) dumpProps(l, [ind stringByAppendingString:@"    "], [CALayer class]);
+              for (NSString *k in @[@"effect", @"effects", @"sdfEffects", @"material", @"glassEffect"]) {
+                  @try {
+                      if ([l respondsToSelector:NSSelectorFromString(k)]) {
+                          id v = [l valueForKey:k];
+                          if (v) { P([NSString stringWithFormat:@"%@    effect-ish %@:", ind, k]); dumpFilter(v, [ind stringByAppendingString:@"      "]); }
+                      }
+                  } @catch (NSException *e) { }
+              }
+              for (CALayer *s in [[l sublayers] copy]) walk(s, depth + 1);
+          }
+
+          static void pump(double s) { [[NSRunLoop currentRunLoop] runUntilDate:[NSDate dateWithTimeIntervalSinceNow:s]]; }
+
+          int main(int argc, const char **argv) {
+              @autoreleasepool {
+                  NSString *out = argc > 1 ? [NSString stringWithUTF8String:argv[1]] : @".";
+                  [[NSFileManager defaultManager] createDirectoryAtPath:out withIntermediateDirectories:YES attributes:nil error:nil];
+                  const char *libs[] = {
+                      "/System/Library/Frameworks/QuartzCore.framework/QuartzCore",
+                      "/System/Library/PrivateFrameworks/RenderBox.framework/RenderBox",
+                      "/System/Library/Frameworks/SwiftUI.framework/SwiftUI",
+                      "/System/Library/PrivateFrameworks/CoreUI.framework/CoreUI",
+                      "/System/Library/Frameworks/CoreImage.framework/CoreImage",
+                      "/System/Library/PrivateFrameworks/CoreMaterial.framework/CoreMaterial" };
+                  for (int i = 0; i < 6; i++) if (!dlopen(libs[i], RTLD_NOW)) fprintf(stderr, "dlopen failed %s\n", libs[i]);
+
+                  // ---- 1. inventory of glass-ish classes ----
+                  openOut(out, @"classes_glass.txt");
+                  NSRegularExpression *re = [NSRegularExpression regularExpressionWithPattern:@"Glass|SDF|LiquidLens|Refract|Displacement|Meniscus" options:0 error:nil];
+                  unsigned int n = 0;
+                  Class *cl = objc_copyClassList(&n);
+                  NSMutableArray *names = [NSMutableArray array];
+                  for (unsigned int i = 0; i < n; i++) {
+                      NSString *s = [NSString stringWithUTF8String:class_getName(cl[i])];
+                      if ([re firstMatchInString:s options:0 range:NSMakeRange(0, [s length])]) [names addObject:s];
+                  }
+                  free(cl);
+                  [names sortUsingSelector:@selector(compare:)];
+                  fprintf(stderr, "glass classes: %lu\n", (unsigned long)[names count]);
+                  for (NSString *name in names) {
+                      Class c = objc_getClass([name UTF8String]);
+                      if (!c) continue;
+                      Class sup = class_getSuperclass(c);
+                      const char *img = class_getImageName(c);
+                      P([NSString stringWithFormat:@"=== %@ : %s  [%s]", name, sup ? class_getName(sup) : "-", img ? img : "?"]);
+                      unsigned int k = 0;
+                      objc_property_t *ps = class_copyPropertyList(c, &k);
+                      for (unsigned int j = 0; j < k; j++) P([NSString stringWithFormat:@"  prop %s  %s", property_getName(ps[j]), property_getAttributes(ps[j]) ?: ""]);
+                      free(ps);
+                      Ivar *iv = class_copyIvarList(c, &k);
+                      for (unsigned int j = 0; j < k; j++) P([NSString stringWithFormat:@"  ivar %s  %s", ivar_getName(iv[j]) ?: "?", ivar_getTypeEncoding(iv[j]) ?: "?"]);
+                      free(iv);
+                      Method *ms = class_copyMethodList(c, &k);
+                      for (unsigned int j = 0; j < k; j++) P([NSString stringWithFormat:@"  -%@  %s", NSStringFromSelector(method_getName(ms[j])), method_getTypeEncoding(ms[j]) ?: ""]);
+                      free(ms);
+                      ms = class_copyMethodList(object_getClass(c), &k);
+                      for (unsigned int j = 0; j < k; j++) P([NSString stringWithFormat:@"  +%@  %s", NSStringFromSelector(method_getName(ms[j])), method_getTypeEncoding(ms[j]) ?: ""]);
+                      free(ms);
+                  }
+
+                  // ---- 2. class defaults + fresh instances (CA / CUI / RB only) ----
+                  openOut(out, @"glass_defaults.txt");
+                  for (NSString *name in names) {
+                      if (!([name hasPrefix:@"CA"] || [name hasPrefix:@"CUI"] || [name hasPrefix:@"RB"])) continue;
+                      Class c = objc_getClass([name UTF8String]);
+                      if (!c) continue;
+                      for (NSString *sn in @[@"defaultValues", @"CA_attributes", @"customAttributes", @"attributeKeys"]) {
+                          SEL sel = NSSelectorFromString(sn);
+                          if (!class_getClassMethod(c, sel)) continue;
+                          @try {
+                              id r = ((id (*)(id, SEL))objc_msgSend)((id)c, sel);
+                              P([NSString stringWithFormat:@"=== %@ +%@\n%@", name, sn, r]);
+                          } @catch (NSException *e) { P([NSString stringWithFormat:@"=== %@ +%@ threw %@", name, sn, e]); }
+                      }
+                      if ([name hasPrefix:@"CASDF"] && class_respondsToSelector(c, @selector(init))) {
+                          @try {
+                              id o = [[c alloc] init];
+                              P([NSString stringWithFormat:@"=== %@ instance", name]);
+                              dumpProps(o, @"  ", [NSObject class]);
+                          } @catch (NSException *e) { P([NSString stringWithFormat:@"=== %@ init threw %@", name, e]); }
+                      }
+                  }
+
+                  // ---- 3. live layer tree of real NSGlassEffectView ----
+                  openOut(out, @"live_glass_layers.txt");
+                  [NSApplication sharedApplication];
+                  [NSApp setActivationPolicy:NSApplicationActivationPolicyRegular];
+                  [NSApp finishLaunching];
+                  NSWindow *win = [[NSWindow alloc] initWithContentRect:NSMakeRect(100, 100, 700, 420)
+                                                              styleMask:(NSWindowStyleMaskTitled | NSWindowStyleMaskClosable | NSWindowStyleMaskResizable)
+                                                                backing:NSBackingStoreBuffered defer:NO];
+                  NSView *root = [[NSView alloc] initWithFrame:NSMakeRect(0, 0, 700, 420)];
+                  [root setWantsLayer:YES];
+                  CAGradientLayer *grad = [CAGradientLayer layer];
+                  grad.colors = @[(id)[[NSColor systemPinkColor] CGColor], (id)[[NSColor systemBlueColor] CGColor]];
+                  grad.frame = root.bounds;
+                  [[root layer] addSublayer:grad];
+                  [win setContentView:root];
+                  Class G = NSClassFromString(@"NSGlassEffectView");
+                  NSMutableArray *glassViews = [NSMutableArray array];
+                  if (G) {
+                      for (int i = 0; i < 2; i++) {
+                          NSView *g = [[G alloc] initWithFrame:NSMakeRect(40 + i * 330, 120, 300, 140)];
+                          @try { [g setValue:@(i) forKey:@"style"]; } @catch (NSException *e) { }
+                          @try { [g setValue:@28 forKey:@"cornerRadius"]; } @catch (NSException *e) { }
+                          NSTextField *t = [NSTextField labelWithString:(i == 0 ? @"regular" : @"clear")];
+                          @try { [g setValue:t forKey:@"contentView"]; } @catch (NSException *e) { [g addSubview:t]; }
+                          [root addSubview:g];
+                          [glassViews addObject:g];
+                      }
+                  } else P(@"NSGlassEffectView MISSING");
+                  [win makeKeyAndOrderFront:nil];
+                  pump(2.0);
+                  for (NSView *g in glassViews) {
+                      id st = nil;
+                      @try { st = [g valueForKey:@"style"]; } @catch (NSException *e) { }
+                      P([NSString stringWithFormat:@"##### NSGlassEffectView view props (style %@)", st]);
+                      dumpProps(g, @"  ", [NSView class]);
+                  }
+                  P(@"##### layer tree from content view");
+                  walk([root layer], 0);
+                  NSView *frameView = [root superview];
+                  if ([frameView layer]) { P(@"##### layer tree from window frame view"); walk([frameView layer], 0); }
+                  fprintf(stderr, "done\n");
+                  if (F) fclose(F);
+              }
+              return 0;
+          }
+          OBJC_EOF
+      - name: Dump shader kernel source from system cache
+        shell: bash
+        run: |
+          GITHUB_WORKSPACE_SCRIPTS="$RUNNER_TEMP/scripts"
+          set +e
+          OUT="$RUNNER_TEMP/glass2"; mkdir -p "$OUT"
+          sw_vers > "$OUT/os.txt"
+          ls -la /System/Volumes/Preboot/Cryptexes/OS/System/Library/dyld/ > "$OUT/cache_files.txt" 2>&1
+          sudo python3 "$GITHUB_WORKSPACE_SCRIPTS/kernels.py" "$OUT/kernels"
+          sudo chown -R "$(whoami)" "$OUT"
+          ls -la "$OUT/kernels"
+          true
+      - name: Pull glass modules from QuartzCore and RenderBox
+        shell: bash
+        run: |
+          GITHUB_WORKSPACE_SCRIPTS="$RUNNER_TEMP/scripts"
+          set +e
+          OUT="$RUNNER_TEMP/glass2"; mkdir -p "$OUT/bc" "$OUT/whole"
+          for f in /System/Library/PrivateFrameworks/RenderBox.framework/Versions/A/Resources/*.metallib \
+                   /System/Library/PrivateFrameworks/CoreUI.framework/Versions/A/Resources/*.metallib; do
+            [ -f "$f" ] && cp "$f" "$OUT/whole/$(echo "$f" | sed 's#^/##; s#/#__#g')"
+          done
+          QC=/System/Volumes/Preboot/Cryptexes/OS/System/Library/Frameworks/QuartzCore.framework/Versions/A/Resources/default.metallib
+          [ -f "$QC" ] || QC=/System/Library/Frameworks/QuartzCore.framework/Versions/A/Resources/default.metallib
+          for f in "$QC" /System/Library/PrivateFrameworks/RenderBox.framework/Versions/A/Resources/*.metallib /System/Library/Frameworks/SwiftUI.framework/Versions/A/Resources/*.metallib; do
+            [ -f "$f" ] && python3 "$GITHUB_WORKSPACE_SCRIPTS/split2.py" "$f" "$OUT/bc" 150000000
+          done
+          ls "$OUT/bc" | wc -l
+          true
+      - name: Inspect live glass at runtime
+        shell: bash
+        run: |
+          GITHUB_WORKSPACE_SCRIPTS="$RUNNER_TEMP/scripts"
+          set +e
+          OUT="$RUNNER_TEMP/glass2"; mkdir -p "$OUT/runtime"
+          clang -fobjc-exceptions -Wno-everything -framework AppKit -framework QuartzCore "$GITHUB_WORKSPACE_SCRIPTS/inspect.m" -o inspect > "$OUT/runtime/compile_log.txt" 2>&1
+          echo "== compile log =="; cat "$OUT/runtime/compile_log.txt"
+          if [ -x ./inspect ]; then
+            ./inspect "$OUT/runtime" 2> "$OUT/runtime/run_log.txt"
+            echo "exit code $?" >> "$OUT/runtime/run_log.txt"
+          fi
+          echo "== run log =="; cat "$OUT/runtime/run_log.txt"
+          wc -l "$OUT"/runtime/*.txt
+          du -sh "$OUT"/* > "$OUT/sizes.txt"; cat "$OUT/sizes.txt"
+          true
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: glass2
+          path: ${{ runner.temp }}/glass2
+          if-no-files-found: warn
