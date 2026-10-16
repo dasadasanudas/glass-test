@@ -1,0 +1,236 @@
+name: glass-ref
+on: workflow_dispatch
+jobs:
+  ref:
+    runs-on: macos-26
+    timeout-minutes: 15
+    steps:
+      - name: Real Apple Liquid Glass reference screenshots (Reduce Transparency OFF)
+        shell: bash
+        run: |
+          mkdir -p "$RUNNER_TEMP/scripts"
+          cat > "$RUNNER_TEMP/scripts/ref.m" <<'OBJC_EOF'
+          #import <AppKit/AppKit.h>
+          #import <QuartzCore/QuartzCore.h>
+          #import <objc/runtime.h>
+
+          static FILE *LOG = NULL;
+          static void L(NSString *s) { if (LOG) { fprintf(LOG, "%s\n", [s UTF8String]); fflush(LOG); } }
+          static int PATTERN = 0; // 0 mix, 1 grid, 2 flat
+
+          @interface KeyWin : NSWindow
+          @end
+          @implementation KeyWin
+          - (BOOL)canBecomeKeyWindow { return YES; }
+          - (BOOL)canBecomeMainWindow { return YES; }
+          @end
+
+          @interface PatternView : NSView
+          @end
+          @implementation PatternView
+          - (BOOL)isFlipped { return YES; }
+          - (void)drawRect:(NSRect)r {
+              NSRect b = [self bounds];
+              int W = (int)NSWidth(b), H = (int)NSHeight(b);
+              [[NSColor whiteColor] setFill]; NSRectFill(b);
+              if (PATTERN == 0) {
+                  for (int y = 0; y < H; y += 20)
+                      for (int x = 0; x < W; x += 20)
+                          if (((x / 20) + (y / 20)) % 2 == 0) { [[NSColor colorWithSRGBRed:0.82 green:0.82 blue:0.82 alpha:1] setFill]; NSRectFill(NSMakeRect(x, y, 20, 20)); }
+                  NSArray *cols = @[[NSColor colorWithSRGBRed:1 green:0.23 blue:0.19 alpha:1], [NSColor colorWithSRGBRed:1 green:0.58 blue:0 alpha:1],
+                                    [NSColor colorWithSRGBRed:1 green:0.8 blue:0 alpha:1], [NSColor colorWithSRGBRed:0.2 green:0.78 blue:0.35 alpha:1],
+                                    [NSColor colorWithSRGBRed:0 green:0.48 blue:1 alpha:1], [NSColor colorWithSRGBRed:0.69 green:0.32 blue:0.87 alpha:1]];
+                  for (int i = 0; i < 6; i++) { [(NSColor *)cols[i] setFill]; NSRectFill(NSMakeRect(0, 30 + i * 80, W, 14)); }
+                  [[NSColor blackColor] setFill];
+                  for (int x = 0; x < W; x += 10) NSRectFill(NSMakeRect(x, 0, 1, H));
+                  NSDictionary *att = @{NSFontAttributeName: [NSFont systemFontOfSize:28 weight:NSFontWeightBold], NSForegroundColorAttributeName: [NSColor blackColor]};
+                  for (int i = 0; i < 7; i++) [@"Liquid Glass 0123456789 ABC" drawAtPoint:NSMakePoint(8, 55 + i * 72) withAttributes:att];
+              } else if (PATTERN == 1) {
+                  [[NSColor blackColor] setFill];
+                  for (int x = 0; x < W; x += 8) NSRectFill(NSMakeRect(x, 0, 1, H));
+                  for (int y = 0; y < H; y += 8) NSRectFill(NSMakeRect(0, y, W, 1));
+                  [[NSColor colorWithSRGBRed:1 green:0 blue:0 alpha:1] setFill];
+                  for (int x = 0; x < W; x += 40) NSRectFill(NSMakeRect(x, 0, 2, H));
+                  [[NSColor colorWithSRGBRed:0 green:0 blue:1 alpha:1] setFill];
+                  for (int y = 0; y < H; y += 40) NSRectFill(NSMakeRect(0, y, W, 2));
+              } else {
+                  // flat blocks for colour matrix: 100x100 tiles
+                  double v[][3] = {{1,1,1},{0,0,0},{0.5,0.5,0.5},{1,0,0},{0,1,0},{0,0,1},{1,1,0},{0,1,1},{1,0,1},{0.25,0.25,0.25},{0.75,0.75,0.75},{0.2,0.4,0.8}};
+                  int n = 12, k = 0;
+                  for (int y = 0; y < H; y += 100)
+                      for (int x = 0; x < W; x += 100) {
+                          double *c = v[k++ % n];
+                          [[NSColor colorWithSRGBRed:c[0] green:c[1] blue:c[2] alpha:1] setFill]; NSRectFill(NSMakeRect(x, y, 100, 100));
+                      }
+              }
+          }
+          @end
+
+          static void pump(double secs) {
+              NSDate *until = [NSDate dateWithTimeIntervalSinceNow:secs];
+              while ([until timeIntervalSinceNow] > 0) {
+                  NSEvent *e = [NSApp nextEventMatchingMask:NSEventMaskAny untilDate:[NSDate dateWithTimeIntervalSinceNow:0.01] inMode:NSDefaultRunLoopMode dequeue:YES];
+                  if (e) [NSApp sendEvent:e];
+              }
+          }
+
+          static NSString *OUT = nil;
+          static NSWindow *WIN = nil;
+
+          static void savePattern(PatternView *pv, NSString *name) {
+              NSBitmapImageRep *rep = [pv bitmapImageRepForCachingDisplayInRect:[pv bounds]];
+              [pv cacheDisplayInRect:[pv bounds] toBitmapImageRep:rep];
+              [[rep representationUsingType:NSBitmapImageFileTypePNG properties:@{}] writeToFile:[OUT stringByAppendingPathComponent:name] atomically:YES];
+          }
+
+          // ask the shell to screencapture, wait for ack
+          static void shoot(NSString *name) {
+              NSRect cr = [WIN contentRectForFrameRect:[WIN frame]];
+              double SH = NSHeight([[NSScreen screens][0] frame]);
+              NSString *req = [NSString stringWithFormat:@"%@ %.0f %.0f %.0f %.0f %ld\n", name, NSMinX(cr), SH - NSMaxY(cr), NSWidth(cr), NSHeight(cr), (long)[WIN windowNumber]];
+              NSString *ack = [OUT stringByAppendingPathComponent:@"ack.txt"];
+              [[NSFileManager defaultManager] removeItemAtPath:ack error:nil];
+              [req writeToFile:[OUT stringByAppendingPathComponent:@"req.tmp"] atomically:NO encoding:NSUTF8StringEncoding error:nil];
+              rename([[OUT stringByAppendingPathComponent:@"req.tmp"] UTF8String], [[OUT stringByAppendingPathComponent:@"req.txt"] UTF8String]);
+              L([NSString stringWithFormat:@"SHOT %@ key=%d", [req stringByTrimmingCharactersInSet:[NSCharacterSet newlineCharacterSet]], [WIN isKeyWindow]]);
+              for (int i = 0; i < 150 && ![[NSFileManager defaultManager] fileExistsAtPath:ack]; i++) pump(0.05);
+              if (![[NSFileManager defaultManager] fileExistsAtPath:ack]) L(@"  ack timeout");
+          }
+
+          int main(int argc, const char **argv) {
+              @autoreleasepool {
+                  OUT = [[NSString stringWithUTF8String:(argc > 1 ? argv[1] : ".")] retain];
+                  LOG = fopen([[OUT stringByAppendingPathComponent:@"ref_log.txt"] UTF8String], "w");
+                  dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(400 * NSEC_PER_SEC)), dispatch_get_global_queue(0, 0), ^{
+                      L(@"WATCHDOG exit"); [@"x" writeToFile:[OUT stringByAppendingPathComponent:@"quit.txt"] atomically:NO encoding:NSUTF8StringEncoding error:nil]; _exit(0);
+                  });
+                  [NSApplication sharedApplication];
+                  [NSApp setActivationPolicy:NSApplicationActivationPolicyRegular];
+                  [NSApp finishLaunching];
+                  WIN = [[KeyWin alloc] initWithContentRect:NSMakeRect(100, 100, 800, 500) styleMask:NSWindowStyleMaskBorderless backing:NSBackingStoreBuffered defer:NO];
+                  [WIN setHasShadow:NO];
+                  [WIN setLevel:NSFloatingWindowLevel];
+                  NSView *root = [[NSView alloc] initWithFrame:NSMakeRect(0, 0, 800, 500)];
+                  [root setWantsLayer:YES];
+                  [WIN setContentView:root];
+                  PatternView *pv = [[PatternView alloc] initWithFrame:[root bounds]];
+                  [root addSubview:pv];
+                  for (int i = 0; i < 15 && ![WIN isKeyWindow]; i++) {
+                      [NSApp activateIgnoringOtherApps:YES];
+                      if ([NSApp respondsToSelector:@selector(activate)]) [NSApp performSelector:@selector(activate)];
+                      [WIN makeKeyAndOrderFront:nil]; pump(1.0);
+                  }
+                  L([NSString stringWithFormat:@"key=%d reduceTransparency=%d increaseContrast=%d scale=%.1f screen=%@", [WIN isKeyWindow],
+                     [[NSWorkspace sharedWorkspace] accessibilityDisplayShouldReduceTransparency],
+                     [[NSWorkspace sharedWorkspace] accessibilityDisplayShouldIncreaseContrast], [WIN backingScaleFactor], NSStringFromRect([[NSScreen screens][0] frame])]);
+                  for (PATTERN = 0; PATTERN < 3; PATTERN++) { [pv setNeedsDisplay:YES]; [pv display]; savePattern(pv, [NSString stringWithFormat:@"pattern%d.png", PATTERN]); }
+
+                  Class G = NSClassFromString(@"NSGlassEffectView");
+                  Class GC = NSClassFromString(@"NSGlassEffectContainerView");
+                  L([NSString stringWithFormat:@"NSGlassEffectView=%d container=%d", G != nil, GC != nil]);
+                  // name, x, y (bottom-up), w, h, radius, style(0 regular 1 clear), dark, kind(0 view, 1 glass button, 2 two views merged)
+                  NSArray *cfgs = @[@[@"none", @0, @0, @0, @0, @0, @0, @0, @0],
+                      @[@"reg_300x100_r28", @100, @200, @300, @100, @28, @0, @0, @0],
+                      @[@"reg_300x200_r28", @100, @150, @300, @200, @28, @0, @0, @0],
+                      @[@"reg_160x44_r22", @100, @250, @160, @44, @22, @0, @0, @0],
+                      @[@"reg_60x60_r30", @100, @250, @60, @60, @30, @0, @0, @0],
+                      @[@"reg_200x200_r100", @100, @150, @200, @200, @100, @0, @0, @0],
+                      @[@"reg_600x300_r40", @100, @100, @600, @300, @40, @0, @0, @0],
+                      @[@"reg_300x100_r0", @100, @200, @300, @100, @0, @0, @0, @0],
+                      @[@"clear_300x100_r28", @100, @200, @300, @100, @28, @1, @0, @0],
+                      @[@"dark_300x100_r28", @100, @200, @300, @100, @28, @0, @1, @0],
+                      @[@"darkclear_300x100_r28", @100, @200, @300, @100, @28, @1, @1, @0],
+                      @[@"dark_600x300_r40", @100, @100, @600, @300, @40, @0, @1, @0],
+                      @[@"button_glass", @100, @250, @140, @32, @0, @0, @0, @1],
+                      @[@"button_glass_dark", @100, @250, @140, @32, @0, @0, @1, @1],
+                      @[@"merge_two", @100, @200, @150, @100, @28, @0, @0, @2]];
+                  for (PATTERN = 0; PATTERN < 3; PATTERN++) {
+                      [pv setNeedsDisplay:YES];
+                      for (NSArray *c in cfgs) {
+                          for (NSView *v in [[[root subviews] copy] autorelease]) if (v != pv) [v removeFromSuperview];
+                          [WIN setAppearance:[NSAppearance appearanceNamed:([c[7] intValue] ? NSAppearanceNameDarkAqua : NSAppearanceNameAqua)]];
+                          NSRect fr = NSMakeRect([c[1] doubleValue], [c[2] doubleValue], [c[3] doubleValue], [c[4] doubleValue]);
+                          int kind = [c[8] intValue];
+                          @try {
+                              if (kind == 1) {
+                                  NSButton *b = [NSButton buttonWithTitle:@"Glass Button" target:nil action:nil];
+                                  [b setBezelStyle:(NSBezelStyle)16];
+                                  [b setFrame:fr];
+                                  [root addSubview:b];
+                              } else if (G && [c[3] intValue] > 0) {
+                                  NSView *box = GC ? [[[GC alloc] initWithFrame:[root bounds]] autorelease] : root;
+                                  if (box != root) [root addSubview:box];
+                                  int count = kind == 2 ? 2 : 1;
+                                  for (int j = 0; j < count; j++) {
+                                      NSRect f2 = fr; f2.origin.x += j * (NSWidth(fr) + 12);
+                                      NSView *g = [[[G alloc] initWithFrame:f2] autorelease];
+                                      [g setValue:c[5] forKey:@"cornerRadius"];
+                                      [g setValue:c[6] forKey:@"style"];
+                                      [box addSubview:g];
+                                  }
+                              }
+                          } @catch (NSException *e) { L([NSString stringWithFormat:@"setup threw %@", e]); }
+                          [WIN makeKeyAndOrderFront:nil];
+                          pump(1.5);
+                          shoot([NSString stringWithFormat:@"p%d_%@", PATTERN, c[0]]);
+                      }
+                  }
+                  L(@"done");
+                  [@"x" writeToFile:[OUT stringByAppendingPathComponent:@"quit.txt"] atomically:NO encoding:NSUTF8StringEncoding error:nil];
+                  if (LOG) fclose(LOG);
+              }
+              return 0;
+          }
+
+          OBJC_EOF
+          set +e
+          S="$RUNNER_TEMP/scripts"
+          OUT="$RUNNER_TEMP/ref"; mkdir -p "$OUT/shots"
+          sw_vers > "$OUT/os.txt"; system_profiler SPDisplaysDataType > "$OUT/display.txt" 2>&1
+          defaults write com.apple.universalaccess reduceTransparency -bool false 2> "$OUT/a11y_err.txt"
+          defaults write com.apple.universalaccess increaseContrast -bool false 2>> "$OUT/a11y_err.txt"
+          defaults read com.apple.universalaccess >> "$OUT/a11y_err.txt" 2>&1
+          APP="$RUNNER_TEMP/GlassRef.app"; mkdir -p "$APP/Contents/MacOS"
+          cat > "$APP/Contents/Info.plist" <<'PLIST_EOF'
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0"><dict>
+          <key>CFBundleIdentifier</key><string>dev.probe.glassref</string>
+          <key>CFBundleName</key><string>GlassRef</string>
+          <key>CFBundleExecutable</key><string>GlassRef</string>
+          <key>CFBundlePackageType</key><string>APPL</string>
+          <key>LSMinimumSystemVersion</key><string>26.0</string>
+          <key>NSPrincipalClass</key><string>NSApplication</string>
+          </dict></plist>
+          PLIST_EOF
+          clang -fobjc-exceptions -fblocks -Wno-everything -framework AppKit -framework QuartzCore "$S/ref.m" -o "$APP/Contents/MacOS/GlassRef" > "$OUT/compile_log.txt" 2>&1
+          echo "== compile log =="; cat "$OUT/compile_log.txt"
+          codesign --force -s - "$APP" > /dev/null 2>&1
+          ( for i in $(seq 1 60); do osascript -e 'tell application id "dev.probe.glassref" to activate' > /dev/null 2>&1; sleep 2; done ) &
+          NUDGE=$!
+          open -n --stdout "$OUT/stdout.txt" --stderr "$OUT/stderr.txt" "$APP" --args "$OUT"
+          t=0; n=0
+          while [ $t -lt 4400 ]; do
+            if [ -f "$OUT/req.txt" ]; then
+              read NAME X Y W H WID < "$OUT/req.txt"
+              screencapture -x -R "$X,$Y,$W,$H" "$OUT/shots/$NAME.png" 2>> "$OUT/shot_err.txt"
+              screencapture -x -o -l "$WID" "$OUT/shots/${NAME}_win.png" 2>> "$OUT/shot_err.txt"
+              rm -f "$OUT/req.txt"; touch "$OUT/ack.txt"; n=$((n+1))
+            fi
+            [ -f "$OUT/quit.txt" ] && break
+            sleep 0.1; t=$((t+1))
+          done
+          kill $NUDGE 2>/dev/null; pkill -f GlassRef
+          screencapture -x "$OUT/final_screen.png"
+          echo "shots taken: $n"
+          echo "== stderr =="; tail -n 20 "$OUT/stderr.txt"
+          echo "== log =="; head -n 12 "$OUT/ref_log.txt" | cut -c1-200
+          ls "$OUT/shots" | head -100
+          true
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: glassref
+          path: ${{ runner.temp }}/ref
+          if-no-files-found: warn
