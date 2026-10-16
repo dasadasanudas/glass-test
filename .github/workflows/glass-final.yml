@@ -1,11 +1,11 @@
-name: mac-replica
+name: mac-replica2
 on: workflow_dispatch
 jobs:
   replica:
     runs-on: macos-26
-    timeout-minutes: 35
+    timeout-minutes: 30
     steps:
-      - name: In-app UI, animations, glass states, sweeps
+      - name: In-app UI, animations, glass states, sweeps, refraction calibration
         shell: bash
         run: |
           GITHUB_WORKSPACE_SCRIPTS="$RUNNER_TEMP/scripts"; mkdir -p "$GITHUB_WORKSPACE_SCRIPTS"
@@ -156,7 +156,10 @@ jobs:
                   CGFloat H = NSMaxY([[[NSScreen screens] objectAtIndex:0] frame]);
                   g = CGPointMake(sp.x, H - sp.y);
               };
-              if ([NSThread isMainThread]) calc(); else dispatch_sync(dispatch_get_main_queue(), calc);
+              if ([NSThread isMainThread]) { calc(); return g; }
+              dispatch_semaphore_t sem = dispatch_semaphore_create(0);
+              dispatch_async(dispatch_get_main_queue(), ^{ calc(); dispatch_semaphore_signal(sem); });
+              dispatch_semaphore_wait(sem, dispatch_time(DISPATCH_TIME_NOW, 3 * NSEC_PER_SEC));
               return g;
           }
           static CGPoint CUR = {5, 5};
@@ -353,6 +356,110 @@ jobs:
           }
           @end
 
+
+          static void walkLite(CALayer *l, int depth, FILE *f) {
+              if (!l || depth > 40 || !f) return;
+              CGRect r = [l frame];
+              fprintf(f, "%*s<%s> frame={%.0f,%.0f,%.0f,%.0f} cr=%.1f op=%.2f hidden=%d\n", depth * 2, "", class_getName(object_getClass(l)),
+                      r.origin.x, r.origin.y, r.size.width, r.size.height, [l cornerRadius], [l opacity], [l isHidden]);
+              id v = nil;
+              @try { v = [l valueForKey:@"filters"]; } @catch (NSException *e) { }
+              if ([v isKindOfClass:[NSArray class]]) for (id flt in v) fprintf(f, "%*s  filter: %s\n", depth * 2, "", [filterLine(flt) UTF8String]);
+              NSArray *subs = nil;
+              @try { subs = [[l sublayers] copy]; } @catch (NSException *e) { }
+              for (CALayer *s in subs) walkLite(s, depth + 1, f);
+              [subs release];
+          }
+          static void snapLite(NSString *dir, NSString *step) {
+              @try {
+                  dumpGlassAll(step);
+                  NSString *safe = [[step componentsSeparatedByCharactersInSet:[[NSCharacterSet alphanumericCharacterSet] invertedSet]] componentsJoinedByString:@"_"];
+                  FILE *f = fopen([[dir stringByAppendingPathComponent:[NSString stringWithFormat:@"tree_%@.txt", safe]] UTF8String], "w");
+                  for (NSWindow *w in [[[NSApp windows] copy] autorelease]) {
+                      if (![w isVisible]) continue;
+                      fprintf(f, "######## window %s level=%ld\n", class_getName([w class]), (long)[w level]);
+                      walkLite([[w contentView] layer], 0, f);
+                  }
+                  if (f) fclose(f);
+              } @catch (NSException *e) { }
+          }
+          static void postEscape(NSWindow *w) {
+              for (int i = 0; i < 2; i++) {
+                  NSEvent *e = [NSEvent keyEventWithType:(i == 0 ? NSEventTypeKeyDown : NSEventTypeKeyUp) location:NSZeroPoint modifierFlags:0
+                                               timestamp:[[NSProcessInfo processInfo] systemUptime] windowNumber:[w windowNumber] context:nil
+                                              characters:@"\e" charactersIgnoringModifiers:@"\e" isARepeat:NO keyCode:53];
+                  if (e) [NSApp postEvent:e atStart:NO];
+              }
+          }
+          static void collectBackdrops(CALayer *l, NSMutableArray *acc, int depth) {
+              if (!l || depth > 40) return;
+              id v = nil;
+              @try { v = [l valueForKey:@"filters"]; } @catch (NSException *e) { }
+              if ([v isKindOfClass:[NSArray class]]) for (id f in v) {
+                  @try { if ([[f valueForKey:@"type"] isEqual:@"glassBackground"]) { [acc addObject:l]; break; } } @catch (NSException *e) { }
+              }
+              for (CALayer *s in [[[l sublayers] copy] autorelease]) collectBackdrops(s, acc, depth + 1);
+          }
+          static void runCalibration(NSWindow *win, NSView *root, NSString *outdir) {
+              Class G = NSClassFromString(@"NSGlassEffectView");
+              Class GC = NSClassFromString(@"NSGlassEffectContainerView");
+              if (!G) return;
+              NSString *cdir = [outdir stringByAppendingPathComponent:@"calib"];
+              [[NSFileManager defaultManager] createDirectoryAtPath:cdir withIntermediateDirectories:YES attributes:nil error:nil];
+              FILE *lf = fopen([[cdir stringByAppendingPathComponent:@"calib_log.txt"] UTF8String], "w");
+              for (NSView *v in [[[root subviews] copy] autorelease]) [v removeFromSuperview];
+              NSTextField *big = [NSTextField labelWithString:@"||||| REFRACTION ||||| 0123456789"];
+              [big setFont:[NSFont systemFontOfSize:44 weight:NSFontWeightHeavy]];
+              [big setFrame:NSMakeRect(10, 250, 880, 60)];
+              [root addSubview:big];
+              NSView *box = GC ? [[[GC alloc] initWithFrame:[root bounds]] autorelease] : root;
+              if (box != root) [root addSubview:box];
+              NSView *g = [[[G alloc] initWithFrame:NSMakeRect(150, 200, 600, 160)] autorelease];
+              @try { [g setValue:@40 forKey:@"cornerRadius"]; } @catch (NSException *e) { }
+              [box addSubview:g];
+              [win setAppearance:nil];
+              pump(1.5);
+              NSArray *combos = @[@[@"base", @0, @0, @0, @0],
+                  @[@"io_a5_h10", @5, @10, @5, @10], @[@"io_a5_h25", @5, @25, @5, @25], @[@"io_a5_h50", @5, @50, @5, @50],
+                  @[@"io_a15_h10", @15, @10, @15, @10], @[@"io_a15_h25", @15, @25, @15, @25], @[@"io_a15_h50", @15, @50, @15, @50],
+                  @[@"io_a30_h10", @30, @10, @30, @10], @[@"io_a30_h25", @30, @25, @30, @25], @[@"io_a30_h50", @30, @50, @30, @50],
+                  @[@"io_a60_h10", @60, @10, @60, @10], @[@"io_a60_h25", @60, @25, @60, @25], @[@"io_a60_h50", @60, @50, @60, @50],
+                  @[@"inner_a30_h25", @30, @25, @0, @0], @[@"outer_a30_h25", @0, @0, @30, @25],
+                  @[@"io_a1_h1", @1, @1, @1, @1], @[@"io_a200_h80", @200, @80, @200, @80]];
+              for (NSArray *c in combos) {
+                  NSMutableArray *bls = [NSMutableArray array];
+                  collectBackdrops([root layer], bls, 0);
+                  int n = 0;
+                  for (CALayer *bl in bls) {
+                      NSMutableArray *fs = [[[bl valueForKey:@"filters"] mutableCopy] autorelease];
+                      for (id f in fs) {
+                          @try {
+                              if (![[f valueForKey:@"type"] isEqual:@"glassBackground"]) continue;
+                              [f setValue:c[1] forKey:@"inputInnerRefractionAmount"];
+                              [f setValue:c[2] forKey:@"inputInnerRefractionHeight"];
+                              [f setValue:c[3] forKey:@"inputOuterRefractionAmount"];
+                              [f setValue:c[4] forKey:@"inputOuterRefractionHeight"];
+                              [f setValue:@1 forKey:@"inputRefractionOpacity"];
+                              n++;
+                          } @catch (NSException *e) { if (lf) fprintf(lf, "set failed %s\n", [[e reason] UTF8String]); }
+                      }
+                      [CATransaction begin]; [CATransaction setDisableActions:YES];
+                      [bl setValue:fs forKey:@"filters"];
+                      [CATransaction commit];
+                  }
+                  pump(0.7);
+                  NSMutableArray *chk = [NSMutableArray array];
+                  findGlassFilters([root layer], chk, 0);
+                  if (lf) { fprintf(lf, "== %s backdrops=%lu set=%d\n", [c[0] UTF8String], (unsigned long)[bls count], n); for (id f in chk) fprintf(lf, "   %s\n", [filterLine(f) UTF8String]); fflush(lf); }
+                  NSString *req = [cdir stringByAppendingPathComponent:[NSString stringWithFormat:@"req_%@", c[0]]];
+                  NSString *png = [cdir stringByAppendingPathComponent:[NSString stringWithFormat:@"%@.png", c[0]]];
+                  [[NSFileManager defaultManager] createFileAtPath:req contents:nil attributes:nil];
+                  for (int i = 0; i < 50 && ![[NSFileManager defaultManager] fileExistsAtPath:png]; i++) pump(0.1);
+              }
+              [[NSFileManager defaultManager] createFileAtPath:[cdir stringByAppendingPathComponent:@"req_DONE"] contents:nil attributes:nil];
+              if (lf) fclose(lf);
+          }
+
           // ======== isolated sweep (each glass alone in its own container) ========
           static void runSweep(NSWindow *win, NSView *root, CAGradientLayer *grad, NSString *outdir, NSString *fileName) {
               Class G = NSClassFromString(@"NSGlassEffectView");
@@ -419,6 +526,13 @@ jobs:
                   NSString *trees = [out stringByAppendingPathComponent:@"trees"];
                   [[NSFileManager defaultManager] createDirectoryAtPath:trees withIntermediateDirectories:YES attributes:nil error:nil];
                   SEEN = [[NSMutableSet alloc] init];
+                  double wd = [mode isEqual:@"full"] ? 330.0 : 150.0;
+                  dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(wd * NSEC_PER_SEC)), dispatch_get_global_queue(0, 0), ^{
+                      T(@"WATCHDOG: forced exit");
+                      if (TL) fflush(TL); if (AF) fflush(AF); if (CF) fflush(CF); if (SF) fflush(SF); if (F) fflush(F);
+                      fprintf(stderr, "watchdog exit\n");
+                      _exit(0);
+                  });
                   [NSApplication sharedApplication];
                   [NSApp setActivationPolicy:NSApplicationActivationPolicyRegular];
                   [NSApp finishLaunching];
@@ -547,9 +661,17 @@ jobs:
                   walkWindows(trees, @"00 idle");
 
                   __block BOOL done = NO;
-                  void (^onMain)(void (^)(void)) = ^(void (^blk)(void)) { dispatch_sync(dispatch_get_main_queue(), blk); };
+                  void (^onMain)(void (^)(void)) = ^(void (^blk)(void)) {
+                      dispatch_semaphore_t sem = dispatch_semaphore_create(0);
+                      void (^b2)(void) = [[blk copy] autorelease];
+                      dispatch_async(dispatch_get_main_queue(), ^{ b2(); dispatch_semaphore_signal(sem); });
+                      if (dispatch_semaphore_wait(sem, dispatch_time(DISPATCH_TIME_NOW, 4 * NSEC_PER_SEC)) != 0) T(@"STEP TIMEOUT (main busy)");
+                  };
                   void (^snap)(NSString *) = ^(NSString *step) {
-                      dispatch_sync(dispatch_get_main_queue(), ^{ dumpGlassAll(step); walkWindows(trees, step); });
+                      dispatch_semaphore_t sem = dispatch_semaphore_create(0);
+                      NSString *st = [[step copy] autorelease];
+                      dispatch_async(dispatch_get_main_queue(), ^{ dumpGlassAll(st); walkWindows(trees, st); dispatch_semaphore_signal(sem); });
+                      if (dispatch_semaphore_wait(sem, dispatch_time(DISPATCH_TIME_NOW, 6 * NSEC_PER_SEC)) != 0) { T(@"SNAP TIMEOUT -> lite snapshot from worker"); snapLite(trees, st); }
                   };
                   void (^click)(NSView *, CGFloat, double) = ^(NSView *v, CGFloat fx, double hold) {
                       glide(globalPt(win, v, fx, 0.5), 0.45, NO);
@@ -577,16 +699,16 @@ jobs:
                       T(@"13 focus text field"); click(tf2, 0.5, 0.1); usleep(1300000); snap(@"13 focus ring");
                       T(@"14 popup menu open");
                       dispatch_async(dispatch_get_main_queue(), ^{ [pop performClick:nil]; });
-                      usleep(1500000); snap(@"14 popup menu open");
-                      T(@"15 popup menu close"); dispatch_async(dispatch_get_main_queue(), ^{ [[pop menu] cancelTracking]; }); usleep(1000000);
+                      usleep(1500000); T(@"14 snapshot (worker)"); snapLite(trees, @"14 popup menu open");
+                      T(@"15 popup menu close"); postEscape(win); usleep(600000); [[pop menu] performSelectorOnMainThread:@selector(cancelTracking) withObject:nil waitUntilDone:NO]; usleep(800000);
                       T(@"16 context menu open");
                       NSMenu *ctx = [[NSMenu alloc] initWithTitle:@"ctx"];
                       for (NSString *tt in @[@"Cut", @"Copy", @"Paste", @"-", @"Get Info", @"Rename", @"Share"]) {
                           if ([tt isEqual:@"-"]) [ctx addItem:[NSMenuItem separatorItem]]; else [ctx addItemWithTitle:tt action:NULL keyEquivalent:@""];
                       }
                       dispatch_async(dispatch_get_main_queue(), ^{ [ctx popUpMenuPositioningItem:nil atLocation:NSMakePoint(500, 520) inView:root]; });
-                      usleep(1500000); snap(@"16 context menu open");
-                      T(@"17 context menu close"); dispatch_async(dispatch_get_main_queue(), ^{ [ctx cancelTracking]; }); usleep(1000000);
+                      usleep(1500000); T(@"16 snapshot (worker)"); snapLite(trees, @"16 context menu open");
+                      T(@"17 context menu close"); postEscape(win); usleep(600000); [ctx performSelectorOnMainThread:@selector(cancelTracking) withObject:nil waitUntilDone:NO]; usleep(800000);
                       T(@"18 popover show");
                       __block NSPopover *po = nil;
                       onMain(^{
@@ -649,6 +771,7 @@ jobs:
                   [win makeKeyAndOrderFront:nil];
                   pump(1.0);
                   runSweep(win, root, grad, out, @"sweep_normal.txt");
+                  runCalibration(win, root, out);
                   fprintf(stderr, "done\n");
                   if (F) fclose(F);
               }
@@ -687,25 +810,40 @@ jobs:
           run_probe() {
             ( for i in $(seq 1 $3); do osascript -e 'tell application id "dev.probe.replica" to activate' > /dev/null 2>&1; sleep 1; done ) &
             local NUDGE=$!
-            open -n -W --stdout "$OUT/stdout_$2.txt" --stderr "$OUT/stderr_$2.txt" "$APP" --args "$OUT" "$2"
-            echo "open exit $? ($2)" >> "$OUT/stderr_$2.txt"
+            open -n -W --stdout "$OUT/stdout_$2.txt" --stderr "$OUT/stderr_$2.txt" "$APP" --args "$OUT" "$2" &
+            local OP=$!; local t=0
+            while kill -0 $OP 2>/dev/null && [ $t -lt $4 ]; do sleep 1; t=$((t+1)); done
+            if kill -0 $OP 2>/dev/null; then echo "SHELL TIMEOUT after $4 s ($2), killing probe" >> "$OUT/stderr_$2.txt"; pkill -f ReplicaProbe; kill $OP 2>/dev/null; fi
+            echo "probe finished ($2) after $t s" >> "$OUT/stderr_$2.txt"
             kill $NUDGE 2> /dev/null
           }
+          # calibration screenshots on request from the probe
+          mkdir -p "$OUT/calib"
+          ( while [ ! -f "$OUT/calib/req_DONE" ] && [ ! -f "$OUT/.stopcal" ]; do
+              for r in "$OUT"/calib/req_*; do
+                [ -e "$r" ] || continue
+                n=$(basename "$r"); n=${n#req_}; [ "$n" = "DONE" ] && continue
+                screencapture -x "$OUT/calib/$n.png" 2>> "$OUT/calib/shot_err.txt"; rm -f "$r"
+              done
+              sleep 0.2
+            done ) &
+          CALW=$!
           # frames from the shell (the app itself is not allowed to capture the screen)
           ( i=0; while [ $i -lt 700 ] && [ ! -f "$OUT/.stop" ]; do screencapture -x -t jpg "$OUT/frames/f_$(printf %04d $i)_$(date +%s.%N | cut -c1-14).jpg" 2>/dev/null; i=$((i+1)); sleep 0.15; done ) &
           FRAMES=$!
           screencapture -V 140 -x "$OUT/interaction_shell.mov" 2> "$OUT/video_err.txt" &
           VID=$!
-          run_probe "$OUT" full 200
+          run_probe "$OUT" full 200 420
           touch "$OUT/.stop"; kill $FRAMES 2>/dev/null; kill -INT $VID 2>/dev/null; sleep 4
           # accessibility passes (sweep only)
           defaults write com.apple.universalaccess reduceTransparency -bool true 2> "$OUT/a11y_err.txt"
-          run_probe "$OUT" reduceTransparency 90
+          run_probe "$OUT" reduceTransparency 90 200
           defaults write com.apple.universalaccess reduceTransparency -bool false 2>> "$OUT/a11y_err.txt"
           defaults write com.apple.universalaccess increaseContrast -bool true 2>> "$OUT/a11y_err.txt"
-          run_probe "$OUT" increaseContrast 90
+          run_probe "$OUT" increaseContrast 90 200
           defaults write com.apple.universalaccess increaseContrast -bool false 2>> "$OUT/a11y_err.txt"
-          rm -f "$OUT/.stop"
+          rm -f "$OUT/.stop"; touch "$OUT/.stopcal"; kill $CALW 2>/dev/null; rm -f "$OUT/.stopcal"
+          echo "calibration shots: $(ls "$OUT"/calib/*.png 2>/dev/null | wc -l)"; head -40 "$OUT/calib/calib_log.txt" | cut -c1-250
           echo "== stderr =="; tail -5 "$OUT"/stderr_*.txt
           echo "== window =="; cat "$OUT"/window_state_*.txt
           echo "== timeline =="; grep -v SAMPLE "$OUT/timeline.txt" | head -50
@@ -719,63 +857,4 @@ jobs:
         with:
           name: replica
           path: ${{ runner.temp }}/replica
-          if-no-files-found: warn
-  sysui:
-    runs-on: macos-26
-    timeout-minutes: 25
-    steps:
-      - name: System UI packages and screenshots
-        shell: bash
-        run: |
-          set +e
-          OUT="$RUNNER_TEMP/sysui"; mkdir -p "$OUT/packages" "$OUT/shots" "$OUT/plists"
-          sw_vers > "$OUT/os.txt"
-          # 1. Core Animation packages (.ca / .caar / .capackage / .caml): layer trees + animations of system UI
-          ROOTS="/System/Library/CoreServices /System/Library/PrivateFrameworks /System/Library/Frameworks /System/Applications /System/Library/ExtensionKit"
-          sudo find $ROOTS \( -name "*.ca" -o -name "*.caar" -o -name "*.capackage" -o -name "*.caml" \) 2>/dev/null > "$OUT/ca_packages_all.txt"
-          echo "ca packages found: $(wc -l < "$OUT/ca_packages_all.txt")"
-          TOTAL=0
-          while read -r p; do
-            sz=$(du -sk "$p" 2>/dev/null | cut -f1); [ -z "$sz" ] && continue
-            [ $((TOTAL + sz)) -gt 400000 ] && continue
-            dst="$OUT/packages/$(echo "$p" | sed 's#^/##; s#/#__#g')"
-            cp -R "$p" "$dst" 2>/dev/null && TOTAL=$((TOTAL + sz))
-          done < "$OUT/ca_packages_all.txt"
-          echo "copied KB: $TOTAL"
-          # 2. system UI apps: resource listings + their plists
-          for app in Dock ControlCenter SystemUIServer NotificationCenter Spotlight WindowManager Finder loginwindow; do
-            for base in /System/Library/CoreServices /System/Applications; do
-              a="$base/$app.app"; [ -d "$a" ] || continue
-              ls -laR "$a/Contents/Resources" > "$OUT/plists/${app}_resources.txt" 2>&1
-              cp "$a/Contents/Info.plist" "$OUT/plists/${app}_Info.plist" 2>/dev/null
-            done
-          done
-          defaults read com.apple.dock > "$OUT/plists/dock_defaults.txt" 2>&1
-          defaults read com.apple.controlcenter > "$OUT/plists/controlcenter_defaults.txt" 2>&1
-          defaults read com.apple.universalaccess > "$OUT/plists/universalaccess_defaults.txt" 2>&1
-          # 3. screenshots of system UI the runner can open
-          shot() { sleep "$2"; screencapture -x "$OUT/shots/$1.png" 2>> "$OUT/shots/errors.txt"; }
-          shot 00_desktop 1
-          open -a "Mission Control" 2>> "$OUT/shots/errors.txt"; shot 01_mission_control 1.5; open -a "Mission Control"; sleep 1.5
-          open ~ ; shot 02_finder_window 2.5
-          open -a "System Settings" 2>> "$OUT/shots/errors.txt"; shot 03_system_settings 4
-          osascript -e 'tell application "System Settings" to quit' 2>/dev/null; sleep 1
-          open -a "Calculator"; shot 04_calculator 2.5
-          open -a "Notes" 2>/dev/null; shot 05_notes 3.5
-          open -a "Apps" 2>> "$OUT/shots/errors.txt"; shot 06_apps_launcher 2.5
-          osascript -e 'tell application "System Events" to tell process "ControlCenter" to click menu bar item 2 of menu bar 1' 2>> "$OUT/shots/errors.txt"; shot 07_control_center 2
-          osascript -e 'tell application "System Events" to key code 53' 2>/dev/null
-          osascript -e 'tell application "System Events" to keystroke space using command down' 2>> "$OUT/shots/errors.txt"; shot 08_spotlight 2
-          osascript -e 'tell application "System Events" to key code 53' 2>/dev/null
-          defaults write com.apple.dock magnification -bool true; defaults write com.apple.dock largesize -int 96; killall Dock; shot 09_dock_restarted 3
-          # 4. can the runner record video from the shell?
-          screencapture -V 6 -x "$OUT/shots/video_test.mov" 2>> "$OUT/shots/errors.txt"
-          ls -la "$OUT/shots"; cat "$OUT/shots/errors.txt" | head -20
-          du -sh "$OUT"/* > "$OUT/sizes.txt"; cat "$OUT/sizes.txt"
-          true
-      - uses: actions/upload-artifact@v4
-        if: always()
-        with:
-          name: sysui
-          path: ${{ runner.temp }}/sysui
           if-no-files-found: warn
