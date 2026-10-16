@@ -278,3 +278,30 @@ jobs:
           name: glass3
           path: ${{ runner.temp }}/glass3
           if-no-files-found: warn
+  quartzcore:
+    runs-on: macos-26
+    timeout-minutes: 15
+    steps:
+      - name: Grab the full QuartzCore shader library
+        shell: bash
+        run: |
+          set +e
+          OUT="$RUNNER_TEMP/quartzcore"; mkdir -p "$OUT"
+          QC=/System/Volumes/Preboot/Cryptexes/OS/System/Library/Frameworks/QuartzCore.framework/Versions/A/Resources/default.metallib
+          [ -f "$QC" ] || QC=/System/Library/Frameworks/QuartzCore.framework/Versions/A/Resources/default.metallib
+          cp "$QC" "$OUT/QuartzCore_default.metallib"
+          ls -la "$QC" > "$OUT/info.txt"
+          file "$QC" >> "$OUT/info.txt"
+          xcodebuild -downloadComponent MetalToolchain > /dev/null 2>&1
+          TC=$(dirname "$(xcrun -f metal 2>/dev/null)")
+          "$TC/air-objdump" --macho --all-headers "$QC" > "$OUT/objdump_headers.txt" 2>&1
+          "$TC/air-objdump" -h "$QC" > "$OUT/objdump_sections.txt" 2>&1
+          "$TC/air-nm" "$QC" > "$OUT/nm.txt" 2>&1
+          head -c 2000 "$OUT/objdump_headers.txt"; wc -l "$OUT"/*.txt
+          true
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: quartzcore
+          path: ${{ runner.temp }}/quartzcore
+          if-no-files-found: warn
