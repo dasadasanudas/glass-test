@@ -1,0 +1,280 @@
+name: glass-active
+on: workflow_dispatch
+jobs:
+  glass:
+    runs-on: macos-26
+    timeout-minutes: 20
+    steps:
+      - name: Inspect live glass in an active window
+        shell: bash
+        run: |
+          GITHUB_WORKSPACE_SCRIPTS="$RUNNER_TEMP/scripts"; mkdir -p "$GITHUB_WORKSPACE_SCRIPTS"
+          set +e
+          cat > "$GITHUB_WORKSPACE_SCRIPTS/inspect3.m" <<'OBJC_EOF'
+          #import <AppKit/AppKit.h>
+          #import <QuartzCore/QuartzCore.h>
+          #import <objc/runtime.h>
+          #import <objc/message.h>
+          #import <dlfcn.h>
+
+          static FILE *F = NULL;
+          static void P(NSString *s) { if (F) { fprintf(F, "%s\n", [s UTF8String]); fflush(F); } }
+          static void openOut(NSString *dir, NSString *name) {
+              if (F) fclose(F);
+              F = fopen([[dir stringByAppendingPathComponent:name] UTF8String], "w");
+          }
+
+          static NSString *clip(id v) {
+              NSString *d = [[v description] stringByReplacingOccurrencesOfString:@"\n" withString:@" "];
+              if ([d length] > 600) d = [[d substringToIndex:600] stringByAppendingString:@"..."];
+              return d ? d : @"(nil)";
+          }
+
+          static BOOL safeType(const char *a) {
+              if (!a || strlen(a) < 2) return NO;
+              char t = a[1];
+              if (t == '^' || t == '*' || t == ':' || t == '#' || t == '?' || t == 'r') return NO;
+              if (t == '@' && a[2] == '?') return NO;
+              return YES;
+          }
+
+          static void dumpProps(id o, NSString *ind, Class stopAt) {
+              NSSet *skip = [NSSet setWithObjects:@"delegate", @"sublayers", @"subviews", @"superlayer", @"superview", @"window",
+                             @"contents", @"layoutManager", @"mask", @"style", @"actions", @"description", @"debugDescription",
+                             @"hash", @"superclass", @"context", @"presentationLayer", @"modelLayer", @"nextResponder",
+                             @"menu", @"layer", @"contentView", @"enclosingScrollView", nil];
+              NSMutableSet *seen = [NSMutableSet set];
+              Class c = object_getClass(o);
+              while (c && c != [NSObject class] && c != stopAt) {
+                  unsigned int n = 0;
+                  objc_property_t *ps = class_copyPropertyList(c, &n);
+                  for (unsigned int i = 0; i < n; i++) {
+                      NSString *pn = [NSString stringWithUTF8String:property_getName(ps[i])];
+                      const char *a = property_getAttributes(ps[i]);
+                      if ([seen containsObject:pn] || [skip containsObject:pn] || !safeType(a)) continue;
+                      [seen addObject:pn];
+                      @try {
+                          id v = [o valueForKey:pn];
+                          P([NSString stringWithFormat:@"%@.%@ = %@", ind, pn, clip(v)]);
+                      } @catch (NSException *e) { }
+                  }
+                  free(ps);
+                  c = class_getSuperclass(c);
+              }
+          }
+
+          static void dumpFilter(id f, NSString *ind) {
+              P([NSString stringWithFormat:@"%@filter %s : %@", ind, class_getName(object_getClass(f)), clip(f)]);
+              for (NSString *k in @[@"name", @"type", @"enabled", @"inputKeys", @"outputKeys"]) {
+                  @try { if ([f respondsToSelector:NSSelectorFromString(k)]) P([NSString stringWithFormat:@"%@  .%@ = %@", ind, k, clip([f valueForKey:k])]); } @catch (NSException *e) { }
+              }
+              @try {
+                  if ([f respondsToSelector:NSSelectorFromString(@"inputKeys")]) {
+                      for (NSString *k in [f valueForKey:@"inputKeys"]) {
+                          @try { P([NSString stringWithFormat:@"%@  [%@] = %@", ind, k, clip([f valueForKey:k])]); } @catch (NSException *e) { }
+                      }
+                  }
+              } @catch (NSException *e) { }
+              dumpProps(f, [ind stringByAppendingString:@"  "], [NSObject class]);
+          }
+
+          static void walk(CALayer *l, int depth) {
+              if (!l || depth > 30) return;
+              NSString *ind = [@"" stringByPaddingToLength:depth * 2 withString:@" " startingAtIndex:0];
+              CGRect fr = [l frame];
+              P([NSString stringWithFormat:@"%@<%s> frame={%.1f,%.1f,%.1f,%.1f} cornerRadius=%.2f opacity=%.2f",
+                 ind, class_getName(object_getClass(l)), fr.origin.x, fr.origin.y, fr.size.width, fr.size.height, [l cornerRadius], [l opacity]]);
+              for (NSString *k in @[@"filters", @"backgroundFilters", @"compositingFilter"]) {
+                  id v = nil;
+                  @try { v = [l valueForKey:k]; } @catch (NSException *e) { }
+                  if (!v) continue;
+                  NSArray *arr = [v isKindOfClass:[NSArray class]] ? v : @[v];
+                  for (id f in arr) { P([NSString stringWithFormat:@"%@  %@:", ind, k]); dumpFilter(f, [ind stringByAppendingString:@"    "]); }
+              }
+              if (object_getClass(l) != [CALayer class]) dumpProps(l, [ind stringByAppendingString:@"    "], [CALayer class]);
+              for (NSString *k in @[@"effect", @"effects", @"sdfEffects", @"material", @"glassEffect"]) {
+                  @try {
+                      if ([l respondsToSelector:NSSelectorFromString(k)]) {
+                          id v = [l valueForKey:k];
+                          if (v) { P([NSString stringWithFormat:@"%@    effect-ish %@:", ind, k]); dumpFilter(v, [ind stringByAppendingString:@"      "]); }
+                      }
+                  } @catch (NSException *e) { }
+              }
+              for (CALayer *s in [[l sublayers] copy]) walk(s, depth + 1);
+          }
+
+          static void pump(double s) { [[NSRunLoop currentRunLoop] runUntilDate:[NSDate dateWithTimeIntervalSinceNow:s]]; }
+
+          int main(int argc, const char **argv) {
+              @autoreleasepool {
+                  NSString *out = argc > 1 ? [NSString stringWithUTF8String:argv[1]] : @".";
+                  [[NSFileManager defaultManager] createDirectoryAtPath:out withIntermediateDirectories:YES attributes:nil error:nil];
+                  const char *libs[] = {
+                      "/System/Library/Frameworks/QuartzCore.framework/QuartzCore",
+                      "/System/Library/PrivateFrameworks/RenderBox.framework/RenderBox",
+                      "/System/Library/Frameworks/SwiftUI.framework/SwiftUI",
+                      "/System/Library/PrivateFrameworks/CoreUI.framework/CoreUI",
+                      "/System/Library/Frameworks/CoreImage.framework/CoreImage",
+                      "/System/Library/PrivateFrameworks/CoreMaterial.framework/CoreMaterial" };
+                  for (int i = 0; i < 6; i++) if (!dlopen(libs[i], RTLD_NOW)) fprintf(stderr, "dlopen failed %s\n", libs[i]);
+
+                  // ---- 1. inventory of glass-ish classes ----
+                  openOut(out, @"classes_glass.txt");
+                  NSRegularExpression *re = [NSRegularExpression regularExpressionWithPattern:@"Glass|SDF|LiquidLens|Refract|Displacement|Meniscus" options:0 error:nil];
+                  unsigned int n = 0;
+                  Class *cl = objc_copyClassList(&n);
+                  NSMutableArray *names = [NSMutableArray array];
+                  for (unsigned int i = 0; i < n; i++) {
+                      NSString *s = [NSString stringWithUTF8String:class_getName(cl[i])];
+                      if ([re firstMatchInString:s options:0 range:NSMakeRange(0, [s length])]) [names addObject:s];
+                  }
+                  free(cl);
+                  [names sortUsingSelector:@selector(compare:)];
+                  fprintf(stderr, "glass classes: %lu\n", (unsigned long)[names count]);
+                  for (NSString *name in names) {
+                      Class c = objc_getClass([name UTF8String]);
+                      if (!c) continue;
+                      Class sup = class_getSuperclass(c);
+                      const char *img = class_getImageName(c);
+                      P([NSString stringWithFormat:@"=== %@ : %s  [%s]", name, sup ? class_getName(sup) : "-", img ? img : "?"]);
+                      unsigned int k = 0;
+                      objc_property_t *ps = class_copyPropertyList(c, &k);
+                      for (unsigned int j = 0; j < k; j++) P([NSString stringWithFormat:@"  prop %s  %s", property_getName(ps[j]), property_getAttributes(ps[j]) ?: ""]);
+                      free(ps);
+                      Ivar *iv = class_copyIvarList(c, &k);
+                      for (unsigned int j = 0; j < k; j++) P([NSString stringWithFormat:@"  ivar %s  %s", ivar_getName(iv[j]) ?: "?", ivar_getTypeEncoding(iv[j]) ?: "?"]);
+                      free(iv);
+                      Method *ms = class_copyMethodList(c, &k);
+                      for (unsigned int j = 0; j < k; j++) P([NSString stringWithFormat:@"  -%@  %s", NSStringFromSelector(method_getName(ms[j])), method_getTypeEncoding(ms[j]) ?: ""]);
+                      free(ms);
+                      ms = class_copyMethodList(object_getClass(c), &k);
+                      for (unsigned int j = 0; j < k; j++) P([NSString stringWithFormat:@"  +%@  %s", NSStringFromSelector(method_getName(ms[j])), method_getTypeEncoding(ms[j]) ?: ""]);
+                      free(ms);
+                  }
+
+                  // ---- 2. class defaults + fresh instances (CA / CUI / RB only) ----
+                  openOut(out, @"glass_defaults.txt");
+                  for (NSString *name in names) {
+                      if (!([name hasPrefix:@"CA"] || [name hasPrefix:@"CUI"] || [name hasPrefix:@"RB"])) continue;
+                      Class c = objc_getClass([name UTF8String]);
+                      if (!c) continue;
+                      for (NSString *sn in @[@"defaultValues", @"CA_attributes", @"customAttributes", @"attributeKeys"]) {
+                          SEL sel = NSSelectorFromString(sn);
+                          if (!class_getClassMethod(c, sel)) continue;
+                          @try {
+                              id r = ((id (*)(id, SEL))objc_msgSend)((id)c, sel);
+                              P([NSString stringWithFormat:@"=== %@ +%@\n%@", name, sn, r]);
+                          } @catch (NSException *e) { P([NSString stringWithFormat:@"=== %@ +%@ threw %@", name, sn, e]); }
+                      }
+                      if ([name hasPrefix:@"CASDF"] && class_respondsToSelector(c, @selector(init))) {
+                          @try {
+                              id o = [[c alloc] init];
+                              P([NSString stringWithFormat:@"=== %@ instance", name]);
+                              dumpProps(o, @"  ", [NSObject class]);
+                          } @catch (NSException *e) { P([NSString stringWithFormat:@"=== %@ init threw %@", name, e]); }
+                      }
+                  }
+
+                  // ---- 3. live glass, ACTIVE window, several configurations ----
+                  [NSApplication sharedApplication];
+                  [NSApp setActivationPolicy:NSApplicationActivationPolicyRegular];
+                  [NSApp finishLaunching];
+                  [NSApp activateIgnoringOtherApps:YES];
+                  NSWindow *win = [[NSWindow alloc] initWithContentRect:NSMakeRect(100, 100, 900, 560)
+                                                              styleMask:(NSWindowStyleMaskTitled | NSWindowStyleMaskClosable | NSWindowStyleMaskResizable | NSWindowStyleMaskFullSizeContentView)
+                                                                backing:NSBackingStoreBuffered defer:NO];
+                  [win setTitle:@"Glass Active"];
+                  NSToolbar *tb = [[NSToolbar alloc] initWithIdentifier:@"tb"];
+                  [win setToolbar:tb];
+                  NSView *root = [[NSView alloc] initWithFrame:NSMakeRect(0, 0, 900, 560)];
+                  [root setWantsLayer:YES];
+                  CAGradientLayer *grad = [CAGradientLayer layer];
+                  grad.colors = @[(id)[[NSColor systemPinkColor] CGColor], (id)[[NSColor systemOrangeColor] CGColor], (id)[[NSColor systemBlueColor] CGColor]];
+                  grad.startPoint = CGPointMake(0, 0); grad.endPoint = CGPointMake(1, 1);
+                  grad.frame = root.bounds;
+                  [[root layer] addSublayer:grad];
+                  NSTextField *big = [NSTextField labelWithString:@"REFRACTION ||| TEST ||| 0123"];
+                  [big setFont:[NSFont systemFontOfSize:60 weight:NSFontWeightHeavy]];
+                  [big setFrame:NSMakeRect(20, 300, 880, 90)];
+                  [root addSubview:big];
+                  [win setContentView:root];
+                  Class G = NSClassFromString(@"NSGlassEffectView");
+                  Class GC = NSClassFromString(@"NSGlassEffectContainerView");
+                  NSMutableArray *glassViews = [NSMutableArray array];
+                  NSView *container = root;
+                  if (GC) {
+                      container = [[GC alloc] initWithFrame:root.bounds];
+                      [root addSubview:container];
+                  }
+                  if (G) {
+                      for (int i = 0; i < 3; i++) {
+                          NSView *g = [[G alloc] initWithFrame:NSMakeRect(30 + i * 290, 280, 260, 130)];
+                          @try { [g setValue:@(i == 1 ? 1 : 0) forKey:@"style"]; } @catch (NSException *e) { }
+                          @try { [g setValue:@(i == 2 ? 65 : 28) forKey:@"cornerRadius"]; } @catch (NSException *e) { }
+                          NSTextField *t = [NSTextField labelWithString:(i == 1 ? @"clear" : (i == 2 ? @"capsule" : @"regular"))];
+                          @try { [g setValue:t forKey:@"contentView"]; } @catch (NSException *e) { [g addSubview:t]; }
+                          [container addSubview:g];
+                          [glassViews addObject:g];
+                      }
+                  } else { openOut(out, @"live_active_layers.txt"); P(@"NSGlassEffectView MISSING"); }
+                  [win makeKeyAndOrderFront:nil];
+                  [win orderFrontRegardless];
+                  [NSApp activateIgnoringOtherApps:YES];
+                  pump(3.0);
+                  [win makeKeyWindow];
+                  [win makeMainWindow];
+                  pump(2.0);
+                  openOut(out, @"window_state.txt");
+                  P([NSString stringWithFormat:@"isKey=%d isMain=%d appActive=%d", [win isKeyWindow], [win isMainWindow], [NSApp isActive]]);
+                  NSTask *cap = [[NSTask alloc] init];
+                  [cap setLaunchPath:@"/usr/sbin/screencapture"];
+                  [cap setArguments:@[@"-x", @"-o", [NSString stringWithFormat:@"-l%ld", (long)[win windowNumber]], [out stringByAppendingPathComponent:@"active_window.png"]]];
+                  @try { [cap launch]; [cap waitUntilExit]; } @catch (NSException *e) { }
+                  NSTask *cap2 = [[NSTask alloc] init];
+                  [cap2 setLaunchPath:@"/usr/sbin/screencapture"];
+                  [cap2 setArguments:@[@"-x", [out stringByAppendingPathComponent:@"full_screen.png"]]];
+                  @try { [cap2 launch]; [cap2 waitUntilExit]; } @catch (NSException *e) { }
+                  openOut(out, @"live_active_layers.txt");
+                  P([NSString stringWithFormat:@"isKey=%d isMain=%d appActive=%d", [win isKeyWindow], [win isMainWindow], [NSApp isActive]]);
+                  for (NSView *g in glassViews) {
+                      P(@"##### NSGlassEffectView");
+                      dumpProps(g, @"  ", [NSView class]);
+                      P(@"##### its layer tree");
+                      walk([g layer], 0);
+                  }
+                  // toolbar / titlebar glass: walk the titlebar container if reachable (guarded)
+                  @try {
+                      NSView *frameView = [[win contentView] superview];
+                      for (NSView *sv in [frameView subviews]) {
+                          NSString *cn = NSStringFromClass([sv class]);
+                          if ([cn rangeOfString:@"Titlebar"].location != NSNotFound && [sv layer]) {
+                              P([NSString stringWithFormat:@"##### titlebar view %@", cn]);
+                              walk([sv layer], 0);
+                          }
+                      }
+                  } @catch (NSException *e) { }
+                  fprintf(stderr, "done\n");
+                  if (F) fclose(F);
+              }
+              return 0;
+          }
+          OBJC_EOF
+          OUT="$RUNNER_TEMP/glass3"; mkdir -p "$OUT"
+          sw_vers > "$OUT/os.txt"
+          clang -fobjc-exceptions -Wno-everything -framework AppKit -framework QuartzCore "$GITHUB_WORKSPACE_SCRIPTS/inspect3.m" -o inspect3 > "$OUT/compile_log.txt" 2>&1
+          echo "== compile log =="; cat "$OUT/compile_log.txt"
+          if [ -x ./inspect3 ]; then
+            ./inspect3 "$OUT" 2> "$OUT/run_log.txt"
+            echo "exit code $?" >> "$OUT/run_log.txt"
+          fi
+          echo "== run log =="; cat "$OUT/run_log.txt"
+          cat "$OUT/window_state.txt"
+          grep -E 'RefractionAmount|RefractionHeight' "$OUT/live_active_layers.txt" | sort | uniq -c
+          ls -la "$OUT"
+          true
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: glass3
+          path: ${{ runner.temp }}/glass3
+          if-no-files-found: warn
