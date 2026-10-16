@@ -1,0 +1,319 @@
+name: glass-capture
+on: workflow_dispatch
+jobs:
+  capture:
+    runs-on: macos-26
+    timeout-minutes: 15
+    steps:
+      - name: Capture Apple's exact glass shader inputs and offscreen renders
+        shell: bash
+        run: |
+          GITHUB_WORKSPACE_SCRIPTS="$RUNNER_TEMP/scripts"; mkdir -p "$GITHUB_WORKSPACE_SCRIPTS"
+          cat > "$GITHUB_WORKSPACE_SCRIPTS/capture.m" <<'OBJC_EOF'
+          #import <AppKit/AppKit.h>
+          #import <QuartzCore/QuartzCore.h>
+          #import <Metal/Metal.h>
+          #import <objc/runtime.h>
+          #import <objc/message.h>
+
+          static FILE *LOG = NULL;
+          static int FRAME_TAG = 0;
+          static NSMutableDictionary *LENHIST = nil;
+          static NSMutableDictionary *PIPENAMES = nil;
+          static void L(NSString *s) { if (LOG) { fprintf(LOG, "%s\n", [s UTF8String]); fflush(LOG); } }
+
+          static void dumpBlock(const void *bytes, NSUInteger len, NSString *how, NSUInteger idx) {
+              const float *f = (const float *)bytes;
+              NSMutableString *m = [NSMutableString stringWithFormat:@"BLOCK frame=%d via=%@ index=%lu len=%lu floats:", FRAME_TAG, how, (unsigned long)idx, (unsigned long)len];
+              for (NSUInteger i = 0; i < len / 4; i++) [m appendFormat:@" %g", f[i]];
+              [m appendString:@" | halfs@80..152:"];
+              if (len >= 48 + 152) {
+                  const uint16_t *h = (const uint16_t *)((const uint8_t *)bytes + 48 + 80);
+                  for (int i = 0; i < 36; i++) {
+                      uint16_t v = h[i];
+                      int s = (v >> 15) & 1, e = (v >> 10) & 31, mt = v & 1023;
+                      double val = e == 0 ? ldexp(mt, -24) : (e == 31 ? INFINITY : ldexp(mt + 1024, e - 25));
+                      [m appendFormat:@" %g", s ? -val : val];
+                  }
+              }
+              L(m);
+          }
+          static BOOL interesting(NSUInteger len) { return len == 320 || len == 272 || len == 304 || len == 288 || len == 336; }
+
+          // ---- swizzle the concrete Metal render encoder class ----
+          static void swizzleEncoderClass(Class ec) {
+              SEL s1 = @selector(setFragmentBytes:length:atIndex:);
+              Method m1 = class_getInstanceMethod(ec, s1);
+              if (m1) {
+                  IMP orig = method_getImplementation(m1);
+                  IMP neu = imp_implementationWithBlock(^(id self_, const void *bytes, NSUInteger len, NSUInteger idx) {
+                      NSString *k = [NSString stringWithFormat:@"bytes_%lu", (unsigned long)len];
+                      LENHIST[k] = @([LENHIST[k] intValue] + 1);
+                      if (interesting(len) && bytes) dumpBlock(bytes, len, @"setFragmentBytes", idx);
+                      ((void (*)(id, SEL, const void *, NSUInteger, NSUInteger))orig)(self_, s1, bytes, len, idx);
+                  });
+                  method_setImplementation(m1, neu);
+                  L([NSString stringWithFormat:@"swizzled %s setFragmentBytes", class_getName(ec)]);
+              }
+              SEL s2 = @selector(setFragmentBuffer:offset:atIndex:);
+              Method m2 = class_getInstanceMethod(ec, s2);
+              if (m2) {
+                  IMP orig = method_getImplementation(m2);
+                  IMP neu = imp_implementationWithBlock(^(id self_, id<MTLBuffer> buf, NSUInteger off, NSUInteger idx) {
+                      @try {
+                          if (buf && [buf storageMode] != MTLStorageModePrivate && [buf contents]) {
+                              NSUInteger avail = [buf length] > off ? [buf length] - off : 0;
+                              NSString *k = [NSString stringWithFormat:@"buffer_avail_%lu", (unsigned long)MIN(avail, (NSUInteger)4096)];
+                              LENHIST[k] = @([LENHIST[k] intValue] + 1);
+                              if (avail >= 320 && avail <= 65536) dumpBlock((const uint8_t *)[buf contents] + off, 320, @"setFragmentBuffer", idx);
+                          }
+                      } @catch (NSException *e) { }
+                      ((void (*)(id, SEL, id, NSUInteger, NSUInteger))orig)(self_, s2, buf, off, idx);
+                  });
+                  method_setImplementation(m2, neu);
+                  L([NSString stringWithFormat:@"swizzled %s setFragmentBuffer", class_getName(ec)]);
+              }
+              SEL s3 = @selector(setFragmentTexture:atIndex:);
+              Method m3 = class_getInstanceMethod(ec, s3);
+              if (m3) {
+                  IMP orig = method_getImplementation(m3);
+                  IMP neu = imp_implementationWithBlock(^(id self_, id<MTLTexture> t, NSUInteger idx) {
+                      if (t) L([NSString stringWithFormat:@"TEX frame=%d index=%lu %lux%lu mips=%lu fmt=%lu", FRAME_TAG, (unsigned long)idx,
+                               (unsigned long)[t width], (unsigned long)[t height], (unsigned long)[t mipmapLevelCount], (unsigned long)[t pixelFormat]]);
+                      ((void (*)(id, SEL, id, NSUInteger))orig)(self_, s3, t, idx);
+                  });
+                  method_setImplementation(m3, neu);
+              }
+              SEL s4 = @selector(setRenderPipelineState:);
+              Method m4 = class_getInstanceMethod(ec, s4);
+              if (m4) {
+                  IMP orig = method_getImplementation(m4);
+                  IMP neu = imp_implementationWithBlock(^(id self_, id ps) {
+                      NSString *lab = nil;
+                      @try { lab = [ps label]; } @catch (NSException *e) { }
+                      L([NSString stringWithFormat:@"PIPE frame=%d %@ fn=%@", FRAME_TAG, lab ?: @"(no label)", PIPENAMES[[NSString stringWithFormat:@"%p", ps]] ?: @"?"]);
+                      ((void (*)(id, SEL, id))orig)(self_, s4, ps);
+                  });
+                  method_setImplementation(m4, neu);
+              }
+          }
+
+
+          static void swizzleDevice(Class dc) {
+              SEL sels[] = { @selector(newRenderPipelineStateWithDescriptor:error:), @selector(newRenderPipelineStateWithDescriptor:options:reflection:error:) };
+              for (int i = 0; i < 2; i++) {
+                  SEL s = sels[i];
+                  Method m = class_getInstanceMethod(dc, s);
+                  if (!m) continue;
+                  IMP orig = method_getImplementation(m);
+                  IMP neu;
+                  if (i == 0) neu = imp_implementationWithBlock(^id(id self_, MTLRenderPipelineDescriptor *d, NSError **err) {
+                      id ps = ((id (*)(id, SEL, id, NSError **))orig)(self_, s, d, err);
+                      if (ps) PIPENAMES[[NSString stringWithFormat:@"%p", ps]] = [NSString stringWithFormat:@"%@ / %@", [[d vertexFunction] name], [[d fragmentFunction] name]];
+                      return ps;
+                  });
+                  else neu = imp_implementationWithBlock(^id(id self_, MTLRenderPipelineDescriptor *d, NSUInteger o, id *refl, NSError **err) {
+                      id ps = ((id (*)(id, SEL, id, NSUInteger, id *, NSError **))orig)(self_, s, d, o, refl, err);
+                      if (ps) PIPENAMES[[NSString stringWithFormat:@"%p", ps]] = [NSString stringWithFormat:@"%@ / %@", [[d vertexFunction] name], [[d fragmentFunction] name]];
+                      return ps;
+                  });
+                  method_setImplementation(m, neu);
+                  L([NSString stringWithFormat:@"swizzled device %s %@", class_getName(dc), NSStringFromSelector(s)]);
+              }
+          }
+
+          @interface PatternView : NSView
+          @end
+          @implementation PatternView
+          - (BOOL)isFlipped { return YES; }
+          - (void)drawRect:(NSRect)r {
+              NSRect b = [self bounds];
+              [[NSColor whiteColor] setFill]; NSRectFill(b);
+              for (int y = 0; y < (int)NSHeight(b); y += 20)
+                  for (int x = 0; x < (int)NSWidth(b); x += 20)
+                      if (((x / 20) + (y / 20)) % 2 == 0) { [[NSColor colorWithWhite:0.82 alpha:1] setFill]; NSRectFill(NSMakeRect(x, y, 20, 20)); }
+              NSArray *cols = @[[NSColor systemRedColor], [NSColor systemOrangeColor], [NSColor systemYellowColor], [NSColor systemGreenColor], [NSColor systemBlueColor], [NSColor systemPurpleColor]];
+              for (int i = 0; i < 6; i++) { [(NSColor *)cols[i] setFill]; NSRectFill(NSMakeRect(0, 30 + i * 80, NSWidth(b), 14)); }
+              [[NSColor blackColor] setFill];
+              for (int x = 0; x < (int)NSWidth(b); x += 10) NSRectFill(NSMakeRect(x, 0, 1, NSHeight(b)));
+              NSDictionary *att = @{NSFontAttributeName: [NSFont systemFontOfSize:28 weight:NSFontWeightBold], NSForegroundColorAttributeName: [NSColor blackColor]};
+              for (int i = 0; i < 7; i++) [@"Liquid Glass 0123456789 ABC" drawAtPoint:NSMakePoint(8, 55 + i * 72) withAttributes:att];
+          }
+          @end
+
+          static void pump(double secs) {
+              NSDate *until = [NSDate dateWithTimeIntervalSinceNow:secs];
+              while ([until timeIntervalSinceNow] > 0) {
+                  NSEvent *e = [NSApp nextEventMatchingMask:NSEventMaskAny untilDate:[NSDate dateWithTimeIntervalSinceNow:0.01] inMode:NSDefaultRunLoopMode dequeue:YES];
+                  if (e) [NSApp sendEvent:e];
+              }
+          }
+
+          static void savePNG(id<MTLTexture> t, NSString *path) {
+              NSUInteger w = [t width], h = [t height];
+              NSMutableData *d = [NSMutableData dataWithLength:w * h * 4];
+              [t getBytes:[d mutableBytes] bytesPerRow:w * 4 fromRegion:MTLRegionMake2D(0, 0, w, h) mipmapLevel:0];
+              CGColorSpaceRef cs = CGColorSpaceCreateWithName(kCGColorSpaceSRGB);
+              CGContextRef ctx = CGBitmapContextCreate([d mutableBytes], w, h, 8, w * 4, cs, kCGBitmapByteOrder32Little | kCGImageAlphaPremultipliedFirst);
+              CGImageRef img = ctx ? CGBitmapContextCreateImage(ctx) : NULL;
+              if (img) {
+                  NSBitmapImageRep *rep = [[[NSBitmapImageRep alloc] initWithCGImage:img] autorelease];
+                  [[rep representationUsingType:NSBitmapImageFileTypePNG properties:@{}] writeToFile:path atomically:YES];
+                  CGImageRelease(img);
+              }
+              if (ctx) CGContextRelease(ctx);
+              CGColorSpaceRelease(cs);
+          }
+
+          static id<MTLTexture> makeTarget(id<MTLDevice> dev, NSUInteger w, NSUInteger h) {
+              MTLTextureDescriptor *td = [MTLTextureDescriptor texture2DDescriptorWithPixelFormat:MTLPixelFormatBGRA8Unorm width:w height:h mipmapped:NO];
+              [td setUsage:(MTLTextureUsageRenderTarget | MTLTextureUsageShaderRead)];
+              [td setStorageMode:MTLStorageModeShared];
+              id<MTLTexture> t = [dev newTextureWithDescriptor:td];
+              if (!t) { [td setStorageMode:MTLStorageModeManaged]; t = [dev newTextureWithDescriptor:td]; }
+              return t;
+          }
+
+          static void renderWith(id<MTLDevice> dev, CALayer *layer, NSString *path, int tag) {
+              CGSize sz = [layer bounds].size;
+              id<MTLTexture> t = makeTarget(dev, (NSUInteger)sz.width, (NSUInteger)sz.height);
+              if (!t) { L(@"no target texture"); return; }
+              CARenderer *r = [CARenderer rendererWithMTLTexture:t options:nil];
+              [r setLayer:layer];
+              [r setBounds:[layer bounds]];
+              FRAME_TAG = tag;
+              L([NSString stringWithFormat:@"=== RENDER %d %@ bounds=%.0fx%.0f", tag, [path lastPathComponent], sz.width, sz.height]);
+              for (int k = 0; k < 3; k++) {
+                  [r beginFrameAtTime:CACurrentMediaTime() timeStamp:NULL];
+                  [r addUpdateRect:[r bounds]];
+                  [r render];
+                  [r endFrame];
+                  usleep(120000);
+              }
+              usleep(300000);
+              savePNG(t, path);
+          }
+
+          int main(int argc, const char **argv) {
+              @autoreleasepool {
+                  NSString *out = argc > 1 ? [NSString stringWithUTF8String:argv[1]] : @".";
+                  [[NSFileManager defaultManager] createDirectoryAtPath:out withIntermediateDirectories:YES attributes:nil error:nil];
+                  LOG = fopen([[out stringByAppendingPathComponent:@"capture_log.txt"] UTF8String], "w");
+                  LENHIST = [[NSMutableDictionary alloc] init];
+                  PIPENAMES = [[NSMutableDictionary alloc] init];
+                  dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(170 * NSEC_PER_SEC)), dispatch_get_global_queue(0, 0), ^{
+                      L(@"WATCHDOG exit"); if (LOG) fflush(LOG); _exit(0);
+                  });
+                  id<MTLDevice> dev = MTLCreateSystemDefaultDevice();
+                  L([NSString stringWithFormat:@"device %@ class=%s", [dev name], class_getName(object_getClass(dev))]);
+                  swizzleDevice(object_getClass(dev));
+                  id<MTLCommandQueue> q = [dev newCommandQueue];
+                  id<MTLTexture> probeT = makeTarget(dev, 8, 8);
+                  MTLRenderPassDescriptor *rp = [MTLRenderPassDescriptor renderPassDescriptor];
+                  rp.colorAttachments[0].texture = probeT;
+                  rp.colorAttachments[0].loadAction = MTLLoadActionClear;
+                  rp.colorAttachments[0].storeAction = MTLStoreActionStore;
+                  id<MTLCommandBuffer> cb = [q commandBuffer];
+                  id<MTLRenderCommandEncoder> enc = [cb renderCommandEncoderWithDescriptor:rp];
+                  Class ec = object_getClass(enc);
+                  [enc endEncoding]; [cb commit]; [cb waitUntilCompleted];
+                  L([NSString stringWithFormat:@"encoder class %s", class_getName(ec)]);
+                  swizzleEncoderClass(ec);
+
+                  [NSApplication sharedApplication];
+                  [NSApp setActivationPolicy:NSApplicationActivationPolicyRegular];
+                  [NSApp finishLaunching];
+                  NSWindow *win = [[NSWindow alloc] initWithContentRect:NSMakeRect(80, 80, 800, 500)
+                      styleMask:(NSWindowStyleMaskTitled | NSWindowStyleMaskClosable) backing:NSBackingStoreBuffered defer:NO];
+                  NSView *root = [[NSView alloc] initWithFrame:NSMakeRect(0, 0, 800, 500)];
+                  [root setWantsLayer:YES];
+                  [win setContentView:root];
+                  PatternView *pv = [[PatternView alloc] initWithFrame:[root bounds]];
+                  [root addSubview:pv];
+                  for (int i = 0; i < 15 && ![win isKeyWindow]; i++) {
+                      [NSApp activateIgnoringOtherApps:YES];
+                      if ([NSApp respondsToSelector:@selector(activate)]) [NSApp performSelector:@selector(activate)];
+                      [win makeKeyAndOrderFront:nil]; pump(1.0);
+                  }
+                  L([NSString stringWithFormat:@"key=%d reduceTransparency=%d increaseContrast=%d scale=%.1f", [win isKeyWindow],
+                     [[NSWorkspace sharedWorkspace] accessibilityDisplayShouldReduceTransparency],
+                     [[NSWorkspace sharedWorkspace] accessibilityDisplayShouldIncreaseContrast], [win backingScaleFactor]]);
+                  Class G = NSClassFromString(@"NSGlassEffectView");
+                  Class GC = NSClassFromString(@"NSGlassEffectContainerView");
+                  // name, x, y(from bottom), w, h, radius, style, dark
+                  NSArray *cfgs = @[@[@"none", @0, @0, @0, @0, @0, @0, @0],
+                      @[@"reg_300x100", @100, @200, @300, @100, @28, @0, @0],
+                      @[@"reg_300x200", @100, @150, @300, @200, @28, @0, @0],
+                      @[@"reg_160x44", @100, @250, @160, @44, @22, @0, @0],
+                      @[@"reg_200x200_r100", @100, @150, @200, @200, @100, @0, @0],
+                      @[@"reg_600x300", @100, @100, @600, @300, @40, @0, @0],
+                      @[@"clear_300x100", @100, @200, @300, @100, @28, @1, @0],
+                      @[@"dark_300x100", @100, @200, @300, @100, @28, @0, @1]];
+                  int tag = 0;
+                  for (NSArray *c in cfgs) {
+                      tag++;
+                      for (NSView *v in [[[root subviews] copy] autorelease]) if (v != pv) [v removeFromSuperview];
+                      [win setAppearance:[NSAppearance appearanceNamed:([c[7] intValue] ? NSAppearanceNameDarkAqua : NSAppearanceNameAqua)]];
+                      if (G && [c[3] intValue] > 0) {
+                          NSView *box = GC ? [[[GC alloc] initWithFrame:[root bounds]] autorelease] : root;
+                          if (box != root) [root addSubview:box];
+                          NSView *g = [[[G alloc] initWithFrame:NSMakeRect([c[1] doubleValue], [c[2] doubleValue], [c[3] doubleValue], [c[4] doubleValue])] autorelease];
+                          @try { [g setValue:c[5] forKey:@"cornerRadius"]; [g setValue:c[6] forKey:@"style"]; } @catch (NSException *e) { }
+                          [box addSubview:g];
+                      }
+                      [win makeKeyAndOrderFront:nil];
+                      pump(1.2);
+                      @try {
+                          renderWith(dev, [root layer], [out stringByAppendingPathComponent:[NSString stringWithFormat:@"render_%@.png", c[0]]], tag);
+                      } @catch (NSException *e) { L([NSString stringWithFormat:@"render threw %@", e]); }
+                  }
+                  NSMutableString *hs = [NSMutableString stringWithString:@"LENGTH HISTOGRAM:"];
+                  for (NSString *k in [[LENHIST allKeys] sortedArrayUsingSelector:@selector(compare:)]) [hs appendFormat:@" %@=%@", k, LENHIST[k]];
+                  L(hs);
+                  L(@"done");
+                  if (LOG) fclose(LOG);
+              }
+              return 0;
+          }
+          OBJC_EOF
+          set +e
+          S="$RUNNER_TEMP/scripts"
+          OUT="$RUNNER_TEMP/capture"; mkdir -p "$OUT"
+          sw_vers > "$OUT/os.txt"
+          # the runner image ships with Reduce Transparency ON; turn it off so we see real Liquid Glass
+          defaults write com.apple.universalaccess reduceTransparency -bool false 2> "$OUT/a11y_err.txt"
+          defaults write com.apple.universalaccess increaseContrast -bool false 2>> "$OUT/a11y_err.txt"
+          APP="$RUNNER_TEMP/GlassCapture.app"; mkdir -p "$APP/Contents/MacOS"
+          cat > "$APP/Contents/Info.plist" <<'PLIST_EOF'
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0"><dict>
+          <key>CFBundleIdentifier</key><string>dev.probe.capture</string>
+          <key>CFBundleName</key><string>GlassCapture</string>
+          <key>CFBundleExecutable</key><string>GlassCapture</string>
+          <key>CFBundlePackageType</key><string>APPL</string>
+          <key>LSMinimumSystemVersion</key><string>26.0</string>
+          <key>NSPrincipalClass</key><string>NSApplication</string>
+          </dict></plist>
+          PLIST_EOF
+          clang -fobjc-exceptions -fblocks -Wno-everything -framework AppKit -framework QuartzCore -framework Metal "$S/capture.m" -o "$APP/Contents/MacOS/GlassCapture" > "$OUT/compile_log.txt" 2>&1
+          echo "== compile log =="; cat "$OUT/compile_log.txt"
+          codesign --force -s - "$APP" > /dev/null 2>&1
+          ( for i in $(seq 1 120); do osascript -e 'tell application id "dev.probe.capture" to activate' > /dev/null 2>&1; sleep 1; done ) &
+          NUDGE=$!
+          open -n -W --stdout "$OUT/stdout.txt" --stderr "$OUT/stderr.txt" "$APP" --args "$OUT" &
+          OP=$!; t=0
+          while kill -0 $OP 2>/dev/null && [ $t -lt 200 ]; do sleep 1; t=$((t+1)); done
+          if kill -0 $OP 2>/dev/null; then echo "SHELL TIMEOUT" >> "$OUT/stderr.txt"; pkill -f GlassCapture; kill $OP 2>/dev/null; fi
+          kill $NUDGE 2>/dev/null
+          echo "== stderr =="; tail -n 20 "$OUT/stderr.txt"
+          echo "== log head =="; head -n 30 "$OUT/capture_log.txt" | cut -c1-200
+          echo "blocks: $(grep -c '^BLOCK' "$OUT/capture_log.txt")"; grep 'LENGTH HISTOGRAM' "$OUT/capture_log.txt" | cut -c1-600
+          ls -la "$OUT"
+          true
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: capture
+          path: ${{ runner.temp }}/capture
+          if-no-files-found: warn
