@@ -8,8 +8,12 @@ jobs:
       - name: Read configured glassBackground inputs from a real NSGlassEffectView
         shell: bash
         run: |
-          OUT="$RUNNER_TEMP/live"; mkdir -p "$OUT"; S="$RUNNER_TEMP/live.m"
-          cat > "$S" <<'OBJC_EOF'
+          set -e
+          OUT="$RUNNER_TEMP/live-output"
+          SRC="$RUNNER_TEMP/live_probe.m"
+          BIN="$RUNNER_TEMP/live_probe"
+          mkdir -p "$OUT"
+          cat > "$SRC" <<'OBJC_EOF'
           #import <AppKit/AppKit.h>
           #import <QuartzCore/QuartzCore.h>
           static FILE *L; static void p(NSString *s){fprintf(L,"%s\n",s.UTF8String);fflush(L);}
@@ -28,13 +32,13 @@ jobs:
 
           OBJC_EOF
           defaults write com.apple.universalaccess reduceTransparency -bool false
-          clang -fobjc-arc -fobjc-exceptions -Wno-everything -framework AppKit -framework QuartzCore "$S" -o "$RUNNER_TEMP/live"
-          codesign -s - -f "$RUNNER_TEMP/live" >/dev/null 2>&1
-          "$RUNNER_TEMP/live" "$OUT"
+          clang -fobjc-arc -fobjc-exceptions -Wno-everything -framework AppKit -framework QuartzCore "$SRC" -o "$BIN"
+          codesign -s - -f "$BIN" >/dev/null 2>&1 || true
+          "$BIN" "$OUT"
           cat "$OUT/live.txt"
       - uses: actions/upload-artifact@v4
         if: always()
         with:
           name: glasslive
-          path: ${{ runner.temp }}/live
+          path: ${{ runner.temp }}/live-output
           if-no-files-found: warn
