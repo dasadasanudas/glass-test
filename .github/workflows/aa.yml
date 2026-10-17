@@ -1,0 +1,40 @@
+name: glass-live-inputs
+on: workflow_dispatch
+jobs:
+  live:
+    runs-on: macos-26
+    timeout-minutes: 8
+    steps:
+      - name: Read configured glassBackground inputs from a real NSGlassEffectView
+        shell: bash
+        run: |
+          OUT="$RUNNER_TEMP/live"; mkdir -p "$OUT"; S="$RUNNER_TEMP/live.m"
+          cat > "$S" <<'OBJC_EOF'
+          #import <AppKit/AppKit.h>
+          #import <QuartzCore/QuartzCore.h>
+          static FILE *L; static void p(NSString *s){fprintf(L,"%s\n",s.UTF8String);fflush(L);}
+          static void walk(CALayer *x,int d){
+            if(!x)return; NSString *pad=[@"" stringByPaddingToLength:d*2 withString:@" " startingAtIndex:0];
+            p([NSString stringWithFormat:@"%@LAYER %@ frame=%@ filters=%@",pad,x.class,NSStringFromRect(x.frame),x.filters]);
+            for(id f in x.filters){ @try { p([NSString stringWithFormat:@"%@ FILTER class=%@ name=%@ type=%@ keys=%@",pad,f.class,[f valueForKey:@"name"],[f valueForKey:@"filterType"],[f valueForKey:@"inputKeys"]]); } @catch(NSException *e){} 
+              for(NSString *k in @[@"inputInnerRefractionAmount",@"inputInnerRefractionHeight",@"inputOuterRefractionAmount",@"inputOuterRefractionHeight",@"inputRefractionDistance0",@"inputRefractionDistance1",@"inputRefractionOpacity",@"inputBlurRadius",@"inputBlurOpacity0",@"inputBlurOpacity1",@"inputBlurOpacity2",@"inputBlurOpacity3",@"inputBlurOpacity4",@"inputBlurDistance0",@"inputBlurDistance1",@"inputBlurDistance2",@"inputBlurDistance3",@"inputBlurDistance4",@"inputFaceOpacity",@"inputFaceColorMatrixWhite",@"inputFaceColorMatrixBlack",@"inputFaceColorMatrixSaturation",@"inputFaceColorMatrixFillColor",@"inputBleedAmount",@"inputBleedHeight",@"inputBleedBlurRadius",@"inputBleedDistance0",@"inputBleedDistance1",@"inputBleedOpacity",@"inputBleedDarkenBlend",@"inputBleedColorMatrixWhite",@"inputBleedColorMatrixBlack",@"inputBleedColorMatrixSaturation",@"inputBleedColorMatrixFillColor",@"inputShadowOffset",@"inputShadowAmount",@"inputShadowHeight",@"inputShadowOpacity",@"inputShadowColorMatrixWhite",@"inputShadowColorMatrixBlack",@"inputShadowColorMatrixSaturation",@"inputShadowColorMatrixFillColor",@"inputShadowDistanceOffset",@"inputShadowBlurRadius",@"inputShadowRadius",@"inputSDRHoldingToneEnabled",@"inputSDRHoldingToneWhite",@"inputSDRGradientDistance0",@"inputSDRGradientDistance1",@"inputSDRShadowOpacity",@"inputMaxHeadroom",@"inputShadowVibrancyContribution",@"inputClamp",@"inputClampPreserveHue"]) { @try { id v=[f valueForKey:k]; if(v) p([NSString stringWithFormat:@"%@   %@ = %@",pad,k,v]); }@catch(NSException *e){} }
+            }
+            for(CALayer *q in x.sublayers)walk(q,d+1);
+          }
+          @interface W: NSWindow @end
+          @implementation W -(BOOL)canBecomeKeyWindow{return YES;} -(BOOL)canBecomeMainWindow{return YES;} @end
+          static void pump(double s){NSDate*u=[NSDate dateWithTimeIntervalSinceNow:s];while(u.timeIntervalSinceNow>0){NSEvent*e=[NSApp nextEventMatchingMask:NSEventMaskAny untilDate:[NSDate dateWithTimeIntervalSinceNow:.02] inMode:NSDefaultRunLoopMode dequeue:YES];if(e)[NSApp sendEvent:e];}}
+          int main(int c,const char**v){@autoreleasepool{NSString*out=c>1?[NSString stringWithUTF8String:v[1]]:@".";[[NSFileManager defaultManager]createDirectoryAtPath:out withIntermediateDirectories:YES attributes:nil error:nil];L=fopen([[out stringByAppendingPathComponent:@"live.txt"]UTF8String],"w");defaults:;[NSApplication sharedApplication];[NSApp setActivationPolicy:NSApplicationActivationPolicyRegular];[NSApp finishLaunching];W*w=[[W alloc]initWithContentRect:NSMakeRect(100,100,800,500)styleMask:NSWindowStyleMaskTitled backing:NSBackingStoreBuffered defer:NO];NSView*r=[[NSView alloc]initWithFrame:NSMakeRect(0,0,800,500)];r.wantsLayer=YES;w.contentView=r;Class G=NSClassFromString(@"NSGlassEffectView"),C=NSClassFromString(@"NSGlassEffectContainerView");p([NSString stringWithFormat:@"G=%@ C=%@",G,C]);NSView*box=C?[[C alloc]initWithFrame:r.bounds]:r;if(box!=r)[r addSubview:box];NSView*g=[[G alloc]initWithFrame:NSMakeRect(100,150,300,200)];@try{[g setValue:@28 forKey:@"cornerRadius"];[g setValue:@0 forKey:@"style"];}@catch(NSException*e){p([NSString stringWithFormat:@"setup %@",e]);}[box addSubview:g];[NSApp activateIgnoringOtherApps:YES];[w makeKeyAndOrderFront:nil];pump(3);p([NSString stringWithFormat:@"key=%d rt=%d",w.keyWindow,NSWorkspace.sharedWorkspace.accessibilityDisplayShouldReduceTransparency]);walk(r.layer,0);p(@"DONE");fclose(L);}return 0;}
+
+          OBJC_EOF
+          defaults write com.apple.universalaccess reduceTransparency -bool false
+          clang -fobjc-arc -fobjc-exceptions -Wno-everything -framework AppKit -framework QuartzCore "$S" -o "$RUNNER_TEMP/live"
+          codesign -s - -f "$RUNNER_TEMP/live" >/dev/null 2>&1
+          "$RUNNER_TEMP/live" "$OUT"
+          cat "$OUT/live.txt"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: glasslive
+          path: ${{ runner.temp }}/live
+          if-no-files-found: warn
