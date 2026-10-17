@@ -9,6 +9,7 @@ jobs:
         shell: bash
         run: |
           set +e
+          tmo() { local s=$1; shift; perl -e 'alarm shift; exec @ARGV' "$s" "$@"; }   # macOS has no GNU timeout
           OUT="$RUNNER_TEMP/cpu"; mkdir -p "$OUT"; cd "$RUNNER_TEMP"
           sw_vers > "$OUT/os.txt"; uname -m >> "$OUT/os.txt"
           cat > t.m <<'M_EOF'
@@ -21,7 +22,7 @@ jobs:
           # 1) symbols (with load ranges) for everything glass-related in the libraries that build/render Liquid Glass
           PAT='[Gg]lass|BackdropLayer|[Bb]ackdrop.*[Ff]ilter|Vibran'
           for LIB in QuartzCore AppKit SkyLight CoreUI; do
-            timeout 300 lldb --batch -o "b main" -o "run" -o "image lookup -v -r -s '$PAT' -m $LIB" -o "kill" ./t > "$OUT/syms_$LIB.txt" 2>&1
+            tmo 300 lldb --batch -o "b main" -o "run" -o "image lookup -v -r -s '$PAT' -m $LIB" -o "kill" ./t > "$OUT/syms_$LIB.txt" 2>&1
             echo "$LIB: $(grep -c 'Symbol:' "$OUT/syms_$LIB.txt") symbols" >> "$OUT/summary.txt"
           done
           # 2) disassemble each function (arm64e) with lldb, by load range (shared-cache slide is the same for every process this boot)
@@ -42,14 +43,14 @@ jobs:
           open(f"{out}/lldb_cmds.txt", "w").write("\n".join(cmds + ["kill"]) + "\n")
           print("functions:", n)
           PY_EOF
-          timeout 900 lldb --batch -s "$OUT/lldb_cmds.txt" ./t > "$OUT/disassembly.txt" 2>&1
+          tmo 900 lldb --batch -s "$OUT/lldb_cmds.txt" ./t > "$OUT/disassembly.txt" 2>&1
           echo "disassembly lines: $(wc -l < "$OUT/disassembly.txt")" >> "$OUT/summary.txt"
           # 3) the floats/strings QuartzCore uses for glass (default values, input key names)
           CACHE=$(ls /System/Volumes/Preboot/Cryptexes/OS/System/Library/dyld/dyld_shared_cache_arm64e 2>/dev/null)
           echo "cache: $CACHE" >> "$OUT/summary.txt"
-          timeout 300 lldb --batch -o "b main" -o "run" -o "image list QuartzCore SkyLight AppKit" -o "kill" ./t > "$OUT/images.txt" 2>&1
+          tmo 300 lldb --batch -o "b main" -o "run" -o "image list QuartzCore SkyLight AppKit" -o "kill" ./t > "$OUT/images.txt" 2>&1
           # 4) also try a full extract of QuartzCore for offline analysis
-          DSC=$(find /Applications/Xcode*.app /Library/Developer -name dsc_extractor.bundle 2>/dev/null | head -1)
+          DSC=$(find /Applications/Xcode*.app -path "*MacOSX.platform*" -name dsc_extractor.bundle 2>/dev/null | head -1); [ -z "$DSC" ] && DSC=$(find /Applications/Xcode*.app /Library/Developer -name dsc_extractor.bundle 2>/dev/null | head -1)
           echo "dsc_extractor: $DSC" >> "$OUT/summary.txt"
           if [ -n "$DSC" ] && [ -n "$CACHE" ]; then
           cat > x.c <<'C_EOF'
@@ -61,7 +62,7 @@ jobs:
             return f(v[2], v[3], ^(unsigned a, unsigned b) {}); }
           C_EOF
             clang x.c -o x >> "$OUT/compile.txt" 2>&1
-            timeout 900 ./x "$DSC" "$CACHE" "$RUNNER_TEMP/dsc" >> "$OUT/summary.txt" 2>&1
+            tmo 900 ./x "$DSC" "$CACHE" "$RUNNER_TEMP/dsc" >> "$OUT/summary.txt" 2>&1
             Q=$(find "$RUNNER_TEMP/dsc" -path "*QuartzCore.framework*" -name QuartzCore -type f | head -1)
             echo "extracted: $Q" >> "$OUT/summary.txt"
             if [ -n "$Q" ]; then
