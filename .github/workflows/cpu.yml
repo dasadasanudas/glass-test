@@ -1,0 +1,81 @@
+name: glass-cpu
+on: workflow_dispatch
+jobs:
+  cpu:
+    runs-on: macos-26
+    timeout-minutes: 45
+    steps:
+      - name: Dump the CPU code that turns Liquid Glass settings into shader inputs
+        shell: bash
+        run: |
+          set +e
+          OUT="$RUNNER_TEMP/cpu"; mkdir -p "$OUT"; cd "$RUNNER_TEMP"
+          sw_vers > "$OUT/os.txt"; uname -m >> "$OUT/os.txt"
+          cat > t.m <<'M_EOF'
+          #import <AppKit/AppKit.h>
+          #import <QuartzCore/QuartzCore.h>
+          int main(int c, char **v) { @autoreleasepool { [NSApplication sharedApplication]; id g = [[NSClassFromString(@"NSGlassEffectView") alloc] init]; (void)g; [CALayer layer]; } return 0; }
+          M_EOF
+          clang -fobjc-arc t.m -framework AppKit -framework QuartzCore -o t > "$OUT/compile.txt" 2>&1
+          codesign -s - -f --entitlements /dev/null t >/dev/null 2>&1
+          # 1) symbols (with load ranges) for everything glass-related in the libraries that build/render Liquid Glass
+          PAT='[Gg]lass|BackdropLayer|[Bb]ackdrop.*[Ff]ilter|Vibran'
+          for LIB in QuartzCore AppKit SkyLight CoreUI; do
+            timeout 300 lldb --batch -o "b main" -o "run" -o "image lookup -v -r -s '$PAT' -m $LIB" -o "kill" ./t > "$OUT/syms_$LIB.txt" 2>&1
+            echo "$LIB: $(grep -c 'Symbol:' "$OUT/syms_$LIB.txt") symbols" >> "$OUT/summary.txt"
+          done
+          # 2) disassemble each function (arm64e) with lldb, by load range (shared-cache slide is the same for every process this boot)
+          python3 - "$OUT" <<'PY_EOF'
+          import re, sys
+          out = sys.argv[1]; cmds = ["b main", "run"]; n = 0; seen = set()
+          for lib in ["QuartzCore", "SkyLight", "AppKit", "CoreUI"]:
+              try: txt = open(f"{out}/syms_{lib}.txt", errors="ignore").read()
+              except Exception: continue
+              for m in re.finditer(r'Symbol: id = \{[^}]*\}, range = \[(0x[0-9a-f]+)-(0x[0-9a-f]+)\), name="([^"]+)"', txt):
+                  a, b, name = m.group(1), m.group(2), m.group(3)
+                  size = int(b, 16) - int(a, 16)
+                  if name in seen or size <= 0 or size > 60000: continue
+                  seen.add(name); n += 1
+                  if n > 900: break
+                  cmds.append("script print(" + repr("===== " + lib + " :: " + name + " size=" + str(size)) + ")")
+                  cmds.append(f"disassemble -s {a} -e {b}")
+          open(f"{out}/lldb_cmds.txt", "w").write("\n".join(cmds + ["kill"]) + "\n")
+          print("functions:", n)
+          PY_EOF
+          timeout 900 lldb --batch -s "$OUT/lldb_cmds.txt" ./t > "$OUT/disassembly.txt" 2>&1
+          echo "disassembly lines: $(wc -l < "$OUT/disassembly.txt")" >> "$OUT/summary.txt"
+          # 3) the floats/strings QuartzCore uses for glass (default values, input key names)
+          CACHE=$(ls /System/Volumes/Preboot/Cryptexes/OS/System/Library/dyld/dyld_shared_cache_arm64e 2>/dev/null)
+          echo "cache: $CACHE" >> "$OUT/summary.txt"
+          timeout 300 lldb --batch -o "b main" -o "run" -o "image list QuartzCore SkyLight AppKit" -o "kill" ./t > "$OUT/images.txt" 2>&1
+          # 4) also try a full extract of QuartzCore for offline analysis
+          DSC=$(find /Applications/Xcode*.app /Library/Developer -name dsc_extractor.bundle 2>/dev/null | head -1)
+          echo "dsc_extractor: $DSC" >> "$OUT/summary.txt"
+          if [ -n "$DSC" ] && [ -n "$CACHE" ]; then
+          cat > x.c <<'C_EOF'
+          #include <dlfcn.h>
+          #include <stdio.h>
+          typedef int (*fn)(const char *, const char *, void (^)(unsigned, unsigned));
+          int main(int c, char **v) { void *h = dlopen(v[1], RTLD_LAZY); if (!h) { printf("dlopen fail\n"); return 1; }
+            fn f = (fn)dlsym(h, "dyld_shared_cache_extract_dylibs_progress"); if (!f) { printf("no sym\n"); return 1; }
+            return f(v[2], v[3], ^(unsigned a, unsigned b) {}); }
+          C_EOF
+            clang x.c -o x >> "$OUT/compile.txt" 2>&1
+            timeout 900 ./x "$DSC" "$CACHE" "$RUNNER_TEMP/dsc" >> "$OUT/summary.txt" 2>&1
+            Q=$(find "$RUNNER_TEMP/dsc" -path "*QuartzCore.framework*" -name QuartzCore -type f | head -1)
+            echo "extracted: $Q" >> "$OUT/summary.txt"
+            if [ -n "$Q" ]; then
+              cp "$Q" "$OUT/QuartzCore.arm64e"
+              nm -m "$Q" 2>/dev/null | grep -iE 'glass|backdrop' > "$OUT/nm_glass.txt"
+              strings -a "$Q" 2>/dev/null | grep -iE 'glass|refraction|bleed|inputBlur|inputShadow|holding' > "$OUT/strings_glass.txt"
+            fi
+          fi
+          cat "$OUT/summary.txt"; ls -la "$OUT"
+          true
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: glasscpu
+          path: ${{ runner.temp }}/cpu
+          if-no-files-found: warn
