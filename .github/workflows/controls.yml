@@ -1,0 +1,297 @@
+name: controls-ref
+on: workflow_dispatch
+jobs:
+  ref:
+    runs-on: macos-26
+    timeout-minutes: 15
+    steps:
+      - name: Native macOS 26 controls, focused window, Reduce Transparency OFF
+        shell: bash
+        run: |
+          mkdir -p "$RUNNER_TEMP/scripts"
+          cat > "$RUNNER_TEMP/scripts/ref2.m" <<'OBJC_EOF'
+          #import <AppKit/AppKit.h>
+          #import <QuartzCore/QuartzCore.h>
+          #import <objc/runtime.h>
+
+          static FILE *LOG = NULL;
+          static void L(NSString *s) { if (LOG) { fprintf(LOG, "%s\n", [s UTF8String]); fflush(LOG); } }
+          static int PATTERN = 0; // 0 mix, 1 grid, 2 flat
+
+          @interface KeyWin : NSWindow
+          @end
+          @implementation KeyWin
+          - (BOOL)canBecomeKeyWindow { return YES; }
+          - (BOOL)canBecomeMainWindow { return YES; }
+          @end
+
+          @interface PatternView : NSView
+          @end
+          @implementation PatternView
+          - (BOOL)isFlipped { return YES; }
+          - (void)drawRect:(NSRect)r {
+              NSRect b = [self bounds];
+              int W = (int)NSWidth(b), H = (int)NSHeight(b);
+              [[NSColor whiteColor] setFill]; NSRectFill(b);
+              if (PATTERN == 0) {
+                  for (int y = 0; y < H; y += 20)
+                      for (int x = 0; x < W; x += 20)
+                          if (((x / 20) + (y / 20)) % 2 == 0) { [[NSColor colorWithSRGBRed:0.82 green:0.82 blue:0.82 alpha:1] setFill]; NSRectFill(NSMakeRect(x, y, 20, 20)); }
+                  NSArray *cols = @[[NSColor colorWithSRGBRed:1 green:0.23 blue:0.19 alpha:1], [NSColor colorWithSRGBRed:1 green:0.58 blue:0 alpha:1],
+                                    [NSColor colorWithSRGBRed:1 green:0.8 blue:0 alpha:1], [NSColor colorWithSRGBRed:0.2 green:0.78 blue:0.35 alpha:1],
+                                    [NSColor colorWithSRGBRed:0 green:0.48 blue:1 alpha:1], [NSColor colorWithSRGBRed:0.69 green:0.32 blue:0.87 alpha:1]];
+                  for (int i = 0; i < 6; i++) { [(NSColor *)cols[i] setFill]; NSRectFill(NSMakeRect(0, 30 + i * 80, W, 14)); }
+                  [[NSColor blackColor] setFill];
+                  for (int x = 0; x < W; x += 10) NSRectFill(NSMakeRect(x, 0, 1, H));
+                  NSDictionary *att = @{NSFontAttributeName: [NSFont systemFontOfSize:28 weight:NSFontWeightBold], NSForegroundColorAttributeName: [NSColor blackColor]};
+                  for (int i = 0; i < 7; i++) [@"Liquid Glass 0123456789 ABC" drawAtPoint:NSMakePoint(8, 55 + i * 72) withAttributes:att];
+              } else if (PATTERN == 1) {
+                  [[NSColor blackColor] setFill];
+                  for (int x = 0; x < W; x += 8) NSRectFill(NSMakeRect(x, 0, 1, H));
+                  for (int y = 0; y < H; y += 8) NSRectFill(NSMakeRect(0, y, W, 1));
+                  [[NSColor colorWithSRGBRed:1 green:0 blue:0 alpha:1] setFill];
+                  for (int x = 0; x < W; x += 40) NSRectFill(NSMakeRect(x, 0, 2, H));
+                  [[NSColor colorWithSRGBRed:0 green:0 blue:1 alpha:1] setFill];
+                  for (int y = 0; y < H; y += 40) NSRectFill(NSMakeRect(0, y, W, 2));
+              } else {
+                  // flat blocks for colour matrix: 100x100 tiles
+                  double v[][3] = {{1,1,1},{0,0,0},{0.5,0.5,0.5},{1,0,0},{0,1,0},{0,0,1},{1,1,0},{0,1,1},{1,0,1},{0.25,0.25,0.25},{0.75,0.75,0.75},{0.2,0.4,0.8}};
+                  int n = 12, k = 0;
+                  for (int y = 0; y < H; y += 100)
+                      for (int x = 0; x < W; x += 100) {
+                          double *c = v[k++ % n];
+                          [[NSColor colorWithSRGBRed:c[0] green:c[1] blue:c[2] alpha:1] setFill]; NSRectFill(NSMakeRect(x, y, 100, 100));
+                      }
+              }
+          }
+          @end
+
+          static void pump(double secs) {
+              NSDate *until = [NSDate dateWithTimeIntervalSinceNow:secs];
+              while ([until timeIntervalSinceNow] > 0) {
+                  NSEvent *e = [NSApp nextEventMatchingMask:NSEventMaskAny untilDate:[NSDate dateWithTimeIntervalSinceNow:0.01] inMode:NSDefaultRunLoopMode dequeue:YES];
+                  if (e) [NSApp sendEvent:e];
+              }
+          }
+
+          static NSString *OUT = nil;
+          static NSWindow *WIN = nil;
+
+          static void savePattern(PatternView *pv, NSString *name) {
+              NSBitmapImageRep *rep = [pv bitmapImageRepForCachingDisplayInRect:[pv bounds]];
+              [pv cacheDisplayInRect:[pv bounds] toBitmapImageRep:rep];
+              [[rep representationUsingType:NSBitmapImageFileTypePNG properties:@{}] writeToFile:[OUT stringByAppendingPathComponent:name] atomically:YES];
+          }
+
+          // ask the shell to screencapture, wait for ack
+          static void ensureKey(void) {
+              for (int i = 0; i < 40 && !([WIN isKeyWindow] && [NSApp isActive]); i++) {
+                  [NSApp activateIgnoringOtherApps:YES];
+                  if ([NSApp respondsToSelector:@selector(activate)]) [NSApp performSelector:@selector(activate)];
+                  [WIN makeKeyAndOrderFront:nil]; [WIN makeMainWindow];
+                  pump(0.1);
+              }
+              pump(0.6); // let the glass animate from subdued to active
+          }
+          static void shoot(NSString *name) {
+              ensureKey();
+              NSRect cr = [WIN contentRectForFrameRect:[WIN frame]];
+              double SH = NSHeight([[NSScreen screens][0] frame]);
+              NSString *req = [NSString stringWithFormat:@"%@ %.0f %.0f %.0f %.0f %ld\n", name, NSMinX(cr), SH - NSMaxY(cr), NSWidth(cr), NSHeight(cr), (long)[WIN windowNumber]];
+              NSString *ack = [OUT stringByAppendingPathComponent:@"ack.txt"];
+              [[NSFileManager defaultManager] removeItemAtPath:ack error:nil];
+              [req writeToFile:[OUT stringByAppendingPathComponent:@"req.tmp"] atomically:NO encoding:NSUTF8StringEncoding error:nil];
+              rename([[OUT stringByAppendingPathComponent:@"req.tmp"] UTF8String], [[OUT stringByAppendingPathComponent:@"req.txt"] UTF8String]);
+              L([NSString stringWithFormat:@"SHOT %@ key=%d active=%d", [req stringByTrimmingCharactersInSet:[NSCharacterSet newlineCharacterSet]], [WIN isKeyWindow], [NSApp isActive]]);
+              for (int i = 0; i < 150 && ![[NSFileManager defaultManager] fileExistsAtPath:ack]; i++) pump(0.05);
+              if (![[NSFileManager defaultManager] fileExistsAtPath:ack]) L(@"  ack timeout");
+              L([NSString stringWithFormat:@"  after key=%d active=%d", [WIN isKeyWindow], [NSApp isActive]]);
+          }
+
+
+          static NSMutableArray *FRAMES = nil;
+          static NSView *ROOT = nil;
+          static NSView *place(NSView *v, NSString *name, CGFloat x, CGFloat yTop, CGFloat w, CGFloat h) {
+              if (w <= 0 || h <= 0) { [v sizeToFit]; w = NSWidth([v frame]); h = NSHeight([v frame]); }
+              [v setFrame:NSMakeRect(x, 500 - yTop - h, w, h)];
+              [ROOT addSubview:v];
+              [FRAMES addObject:@{@"name": name, @"v": v}];
+              return v;
+          }
+          static NSButton *btn(NSString *t, NSInteger bezel) { NSButton *b = [NSButton buttonWithTitle:t target:nil action:nil]; if (bezel >= 0) [b setBezelStyle:(NSBezelStyle)bezel]; return b; }
+
+          static void buildControls(int variant) {
+              // variant 0 = normal/on states, 1 = pressed/highlighted + disabled, 2 = sizes (mini/small/regular/large)
+              CGFloat y = 14;
+              if (variant == 0 || variant == 1) {
+                  BOOL hi = variant == 1;
+                  NSButton *push = btn(@"Button", 1); place(push, @"push", 14, y, 0, 0); if (hi) [push highlight:YES];
+                  NSButton *def = btn(@"Default", 1); [def setKeyEquivalent:@"\r"]; place(def, @"push_default", 120, y, 0, 0); if (hi) [def setEnabled:NO];
+                  NSButton *gl = btn(@"Glass", 16); place(gl, @"glass_button", 240, y, 0, 0); if (hi) [gl highlight:YES];
+                  NSButton *help = btn(@"", 9); [help setBezelStyle:NSBezelStyleHelpButton]; place(help, @"help", 340, y, 0, 0);
+                  NSButton *disc = btn(@"", 13); [disc setBezelStyle:NSBezelStyleDisclosure]; [disc setButtonType:NSButtonTypeOnOff]; [disc setState:1]; place(disc, @"disclosure", 380, y, 0, 0);
+                  y += 40;
+                  NSButton *c1 = [NSButton checkboxWithTitle:@"Checkbox" target:nil action:nil]; place(c1, @"checkbox_off", 14, y, 0, 0); if (hi) [c1 highlight:YES];
+                  NSButton *c2 = [NSButton checkboxWithTitle:@"Checked" target:nil action:nil]; [c2 setState:1]; place(c2, @"checkbox_on", 130, y, 0, 0); if (hi) [c2 setEnabled:NO];
+                  NSButton *c3 = [NSButton checkboxWithTitle:@"Mixed" target:nil action:nil]; [c3 setAllowsMixedState:YES]; [c3 setState:-1]; place(c3, @"checkbox_mixed", 240, y, 0, 0);
+                  NSButton *r1 = [NSButton radioButtonWithTitle:@"Radio" target:nil action:nil]; place(r1, @"radio_off", 340, y, 0, 0); if (hi) [r1 highlight:YES];
+                  NSButton *r2 = [NSButton radioButtonWithTitle:@"Chosen" target:nil action:nil]; [r2 setState:1]; place(r2, @"radio_on", 430, y, 0, 0); if (hi) [r2 setEnabled:NO];
+                  y += 36;
+                  NSSwitch *s1 = [[NSSwitch alloc] init]; place(s1, @"switch_off", 14, y, 0, 0); if (hi) [s1 setEnabled:NO];
+                  NSSwitch *s2 = [[NSSwitch alloc] init]; [s2 setState:1]; place(s2, @"switch_on", 90, y, 0, 0); if (hi) [s2 setEnabled:NO];
+                  NSSegmentedControl *seg = [NSSegmentedControl segmentedControlWithLabels:@[@"One", @"Two", @"Three"] trackingMode:NSSegmentSwitchTrackingSelectOne target:nil action:nil];
+                  [seg setSelectedSegment:0]; place(seg, @"segmented", 170, y, 0, 0); if (hi) [seg setEnabled:NO];
+                  NSPopUpButton *pop = [[NSPopUpButton alloc] initWithFrame:NSMakeRect(0, 0, 10, 10) pullsDown:NO]; [pop addItemsWithTitles:@[@"Option", @"Second"]]; place(pop, @"popup", 360, y, 120, 0); if (hi) [pop setEnabled:NO];
+                  y += 40;
+                  NSSlider *sl = [NSSlider sliderWithValue:40 minValue:0 maxValue:100 target:nil action:nil]; place(sl, @"slider", 14, y, 240, 0); if (hi) [sl setEnabled:NO];
+                  NSSlider *st = [NSSlider sliderWithValue:60 minValue:0 maxValue:100 target:nil action:nil]; [st setNumberOfTickMarks:6]; place(st, @"slider_ticks", 270, y, 220, 0);
+                  y += 44;
+                  NSSlider *sv = [NSSlider sliderWithValue:30 minValue:0 maxValue:100 target:nil action:nil]; [sv setVertical:YES]; place(sv, @"slider_vertical", 520, 14, 24, 160);
+                  NSSlider *knob = [NSSlider sliderWithValue:30 minValue:0 maxValue:100 target:nil action:nil]; [knob setSliderType:NSSliderTypeCircular]; place(knob, @"slider_circular", 560, 14, 0, 0);
+                  NSTextField *tf = [NSTextField textFieldWithString:@"Text field"]; place(tf, @"textfield", 14, y, 200, 0);
+                  NSTextField *ph = [NSTextField textFieldWithString:@""]; [ph setPlaceholderString:@"Placeholder"]; place(ph, @"textfield_placeholder", 230, y, 160, 0);
+                  NSSearchField *sf = [[NSSearchField alloc] init]; [sf setPlaceholderString:@"Search"]; place(sf, @"searchfield", 400, y, 160, 0);
+                  y += 40;
+                  NSStepper *stp = [[NSStepper alloc] init]; place(stp, @"stepper", 14, y, 0, 0);
+                  NSComboBox *cb = [[NSComboBox alloc] init]; [cb addItemsWithObjectValues:@[@"One", @"Two"]]; [cb setStringValue:@"Combo"]; place(cb, @"combobox", 50, y, 140, 0);
+                  NSColorWell *cw = [[NSColorWell alloc] init]; [cw setColor:[NSColor systemBlueColor]]; place(cw, @"colorwell", 210, y, 44, 24);
+                  NSDatePicker *dp = [[NSDatePicker alloc] init]; [dp setDateValue:[NSDate dateWithTimeIntervalSince1970:1760000000]]; place(dp, @"datepicker", 270, y, 0, 0);
+                  y += 40;
+                  NSProgressIndicator *pr = [[NSProgressIndicator alloc] init]; [pr setIndeterminate:NO]; [pr setDoubleValue:40]; place(pr, @"progress_bar", 14, y, 240, 0);
+                  NSProgressIndicator *sp = [[NSProgressIndicator alloc] init]; [sp setStyle:NSProgressIndicatorStyleSpinning]; [sp setIndeterminate:NO]; [sp setDoubleValue:60]; place(sp, @"progress_spinner", 270, y - 6, 32, 32);
+                  NSLevelIndicator *lv = [[NSLevelIndicator alloc] init]; [lv setLevelIndicatorStyle:NSLevelIndicatorStyleContinuousCapacity]; [lv setMaxValue:10]; [lv setDoubleValue:6]; place(lv, @"level", 320, y, 160, 0);
+                  y += 40;
+                  NSButton *rec = btn(@"Recessed", NSBezelStyleRecessed); place(rec, @"recessed", 14, y, 0, 0);
+                  NSButton *inl = btn(@"Inline", NSBezelStyleInline); place(inl, @"inline", 120, y, 0, 0);
+                  NSButton *tex = btn(@"Toolbar", NSBezelStyleToolbar); place(tex, @"toolbar_button", 200, y, 0, 0);
+                  NSButton *flex = btn(@"Flexible\nPush", NSBezelStyleFlexiblePush); place(flex, @"flexible_push", 300, y, 110, 44);
+              } else {
+                  NSControlSize sizes[4] = {NSControlSizeMini, NSControlSizeSmall, NSControlSizeRegular, NSControlSizeLarge};
+                  NSString *sn[4] = {@"mini", @"small", @"regular", @"large"};
+                  for (int i = 0; i < 4; i++) {
+                      CGFloat x = 14 + i * 190, yy = 14;
+                      NSButton *p = btn(@"Button", 1); [p setControlSize:sizes[i]]; place(p, [@"push_" stringByAppendingString:sn[i]], x, yy, 0, 0); yy += 44;
+                      NSButton *c = [NSButton checkboxWithTitle:@"Check" target:nil action:nil]; [c setControlSize:sizes[i]]; [c setState:1]; place(c, [@"checkbox_" stringByAppendingString:sn[i]], x, yy, 0, 0); yy += 36;
+                      NSButton *r = [NSButton radioButtonWithTitle:@"Radio" target:nil action:nil]; [r setControlSize:sizes[i]]; [r setState:1]; place(r, [@"radio_" stringByAppendingString:sn[i]], x, yy, 0, 0); yy += 36;
+                      NSSwitch *s = [[NSSwitch alloc] init]; [s setControlSize:sizes[i]]; [s setState:1]; place(s, [@"switch_" stringByAppendingString:sn[i]], x, yy, 0, 0); yy += 40;
+                      NSSlider *sl = [NSSlider sliderWithValue:50 minValue:0 maxValue:100 target:nil action:nil]; [sl setControlSize:sizes[i]]; place(sl, [@"slider_" stringByAppendingString:sn[i]], x, yy, 170, 0); yy += 40;
+                      NSSegmentedControl *sg = [NSSegmentedControl segmentedControlWithLabels:@[@"A", @"B", @"C"] trackingMode:NSSegmentSwitchTrackingSelectOne target:nil action:nil]; [sg setControlSize:sizes[i]]; [sg setSelectedSegment:1]; place(sg, [@"segmented_" stringByAppendingString:sn[i]], x, yy, 0, 0); yy += 40;
+                      NSPopUpButton *pp = [[NSPopUpButton alloc] initWithFrame:NSMakeRect(0, 0, 10, 10) pullsDown:NO]; [pp addItemsWithTitles:@[@"Option"]]; [pp setControlSize:sizes[i]]; place(pp, [@"popup_" stringByAppendingString:sn[i]], x, yy, 120, 0); yy += 40;
+                      NSTextField *t = [NSTextField textFieldWithString:@"Text"]; [t setControlSize:sizes[i]]; place(t, [@"textfield_" stringByAppendingString:sn[i]], x, yy, 150, 0);
+                  }
+              }
+          }
+
+          int main(int argc, const char **argv) {
+              @autoreleasepool {
+                  OUT = [[NSString stringWithUTF8String:(argc > 1 ? argv[1] : ".")] retain];
+                  LOG = fopen([[OUT stringByAppendingPathComponent:@"ref_log.txt"] UTF8String], "w");
+                  dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(400 * NSEC_PER_SEC)), dispatch_get_global_queue(0, 0), ^{
+                      L(@"WATCHDOG exit"); [@"x" writeToFile:[OUT stringByAppendingPathComponent:@"quit.txt"] atomically:NO encoding:NSUTF8StringEncoding error:nil]; _exit(0);
+                  });
+                  [NSApplication sharedApplication];
+                  [NSApp setActivationPolicy:NSApplicationActivationPolicyRegular];
+                  [NSApp finishLaunching];
+                  WIN = [[KeyWin alloc] initWithContentRect:NSMakeRect(100, 100, 800, 500) styleMask:NSWindowStyleMaskBorderless backing:NSBackingStoreBuffered defer:NO];
+                  [WIN setHasShadow:NO]; [WIN setLevel:NSFloatingWindowLevel];
+                  NSView *base = [[NSView alloc] initWithFrame:NSMakeRect(0, 0, 800, 500)]; [base setWantsLayer:YES]; [WIN setContentView:base];
+                  PatternView *pv = [[PatternView alloc] initWithFrame:[base bounds]]; [base addSubview:pv];
+                  ROOT = [[NSView alloc] initWithFrame:[base bounds]]; [base addSubview:ROOT];
+                  FRAMES = [[NSMutableArray alloc] init];
+                  ensureKey();
+                  L([NSString stringWithFormat:@"key=%d reduceTransparency=%d scale=%.1f", [WIN isKeyWindow], [[NSWorkspace sharedWorkspace] accessibilityDisplayShouldReduceTransparency], [WIN backingScaleFactor]]);
+                  // colour dump (resolved per appearance)
+                  NSArray *cn = @[@"controlAccentColor", @"controlColor", @"controlBackgroundColor", @"controlTextColor", @"disabledControlTextColor", @"selectedControlColor",
+                                  @"windowBackgroundColor", @"underPageBackgroundColor", @"labelColor", @"secondaryLabelColor", @"separatorColor", @"keyboardFocusIndicatorColor",
+                                  @"systemFillColor", @"secondarySystemFillColor", @"tertiarySystemFillColor", @"quaternarySystemFillColor", @"quinarySystemFillColor",
+                                  @"systemBlueColor", @"systemGreenColor", @"textBackgroundColor", @"placeholderTextColor", @"selectedContentBackgroundColor", @"unemphasizedSelectedContentBackgroundColor"];
+                  // name, appearance, background (0 = window background, 1 = grid pattern, 2 = text pattern), variant
+                  NSArray *runs = @[@[@"light_normal", @0, @-1, @0], @[@"light_pressed_disabled", @0, @-1, @1], @[@"light_sizes", @0, @-1, @2],
+                                    @[@"dark_normal", @1, @-1, @0], @[@"dark_pressed_disabled", @1, @-1, @1], @[@"dark_sizes", @1, @-1, @2],
+                                    @[@"light_on_grid", @0, @1, @0], @[@"dark_on_grid", @1, @1, @0], @[@"light_on_text", @0, @0, @0]];
+                  for (NSArray *r in runs) {
+                      for (NSView *v in [[[ROOT subviews] copy] autorelease]) [v removeFromSuperview];
+                      [FRAMES removeAllObjects];
+                      NSAppearance *ap = [NSAppearance appearanceNamed:([r[1] intValue] ? NSAppearanceNameDarkAqua : NSAppearanceNameAqua)];
+                      [WIN setAppearance:ap];
+                      int bg = [r[2] intValue];
+                      [pv setHidden:(bg < 0)];
+                      if (bg >= 0) { PATTERN = bg; [pv setNeedsDisplay:YES]; }
+                      [ap performAsCurrentDrawingAppearance:^{ [[base layer] setBackgroundColor:[[NSColor windowBackgroundColor] CGColor]]; }];
+                      buildControls([r[3] intValue]);
+                      pump(0.8);
+                      shoot(r[0]);
+                      NSMutableString *fs = [NSMutableString stringWithFormat:@"FRAMES %@", r[0]];
+                      for (NSDictionary *f in FRAMES) { NSRect fr = [f[@"v"] frame]; [fs appendFormat:@" | %@ %.0f %.0f %.0f %.0f", f[@"name"], NSMinX(fr), 500 - NSMaxY(fr), NSWidth(fr), NSHeight(fr)]; }
+                      L(fs);
+                      if (bg < 0 && [r[3] intValue] == 0) {
+                          [ap performAsCurrentDrawingAppearance:^{
+                              NSMutableString *cs = [NSMutableString stringWithFormat:@"COLORS %@", r[0]];
+                              for (NSString *n in cn) {
+                                  if (![NSColor respondsToSelector:NSSelectorFromString(n)]) continue;
+                        NSColor *c = [[NSColor performSelector:NSSelectorFromString(n)] colorUsingColorSpace:[NSColorSpace sRGBColorSpace]];
+                                  if (c) [cs appendFormat:@" | %@ %.4f %.4f %.4f %.4f", n, [c redComponent], [c greenComponent], [c blueComponent], [c alphaComponent]];
+                              }
+                              L(cs);
+                          }];
+                      }
+                  }
+                  L(@"done");
+                  [@"x" writeToFile:[OUT stringByAppendingPathComponent:@"quit.txt"] atomically:NO encoding:NSUTF8StringEncoding error:nil];
+                  if (LOG) fclose(LOG);
+              }
+              return 0;
+          }
+
+          OBJC_EOF
+          set +e
+          S="$RUNNER_TEMP/scripts"
+          OUT="$RUNNER_TEMP/ref"; mkdir -p "$OUT/shots"
+          sw_vers > "$OUT/os.txt"; system_profiler SPDisplaysDataType > "$OUT/display.txt" 2>&1
+          defaults write com.apple.universalaccess reduceTransparency -bool false 2> "$OUT/a11y_err.txt"
+          defaults write com.apple.universalaccess increaseContrast -bool false 2>> "$OUT/a11y_err.txt"
+          defaults read com.apple.universalaccess >> "$OUT/a11y_err.txt" 2>&1
+          APP="$RUNNER_TEMP/GlassRef.app"; mkdir -p "$APP/Contents/MacOS"
+          cat > "$APP/Contents/Info.plist" <<'PLIST_EOF'
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0"><dict>
+          <key>CFBundleIdentifier</key><string>dev.probe.glassref</string>
+          <key>CFBundleName</key><string>GlassRef</string>
+          <key>CFBundleExecutable</key><string>GlassRef</string>
+          <key>CFBundlePackageType</key><string>APPL</string>
+          <key>LSMinimumSystemVersion</key><string>26.0</string>
+          <key>NSPrincipalClass</key><string>NSApplication</string>
+          </dict></plist>
+          PLIST_EOF
+          clang -fobjc-exceptions -fblocks -Wno-everything -framework AppKit -framework QuartzCore "$S/ref2.m" -o "$APP/Contents/MacOS/GlassRef" > "$OUT/compile_log.txt" 2>&1
+          echo "== compile log =="; cat "$OUT/compile_log.txt"
+          codesign --force -s - "$APP" > /dev/null 2>&1
+          ( for i in $(seq 1 5); do osascript -e 'tell application id "dev.probe.glassref" to activate' > /dev/null 2>&1; sleep 2; done ) &
+          NUDGE=$!
+          open -n --stdout "$OUT/stdout.txt" --stderr "$OUT/stderr.txt" "$APP" --args "$OUT"
+          t=0; n=0
+          while [ $t -lt 4400 ]; do
+            if [ -f "$OUT/req.txt" ]; then
+              read NAME X Y W H WID < "$OUT/req.txt"
+              screencapture -x -o -l "$WID" "$OUT/shots/${NAME}_win.png" 2>> "$OUT/shot_err.txt"
+              rm -f "$OUT/req.txt"; touch "$OUT/ack.txt"; n=$((n+1))
+            fi
+            [ -f "$OUT/quit.txt" ] && break
+            sleep 0.1; t=$((t+1))
+          done
+          kill $NUDGE 2>/dev/null; pkill -f GlassRef
+          screencapture -x "$OUT/final_screen.png"
+          echo "shots taken: $n"
+          echo "== stderr =="; tail -n 20 "$OUT/stderr.txt"
+          echo "== log =="; head -n 12 "$OUT/ref_log.txt" | cut -c1-200
+          ls "$OUT/shots" | head -100
+          true
+
+          echo "key states:"; grep -c "key=1 active=1" "$OUT/ref_log.txt"; grep -c "SHOT" "$OUT/ref_log.txt"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: controlsref
+          path: ${{ runner.temp }}/ref
+          if-no-files-found: warn
