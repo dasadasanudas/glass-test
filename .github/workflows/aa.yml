@@ -9,53 +9,131 @@ jobs:
         shell: bash
         run: |
           set -e
-          OUT="$RUNNER_TEMP/glass-input-sweep-output"; SRC="$RUNNER_TEMP/glass_input_sweep.m"; BIN="$RUNNER_TEMP/glass_input_sweep"
+          OUT="$RUNNER_TEMP/glass-input-sweep-output"
+          SRC="$RUNNER_TEMP/glass_input_sweep.m"
+          BIN="$RUNNER_TEMP/glass_input_sweep"
           mkdir -p "$OUT"
           cat > "$SRC" <<'OBJC_EOF'
           #import <AppKit/AppKit.h>
           #import <QuartzCore/QuartzCore.h>
-          static FILE *L; static void p(NSString *s){fprintf(L,"%s\n",s.UTF8String);fflush(L);}
-          static void walk(CALayer *x,int d){
-            if(!x)return; NSString *pad=[@"" stringByPaddingToLength:d*2 withString:@" " startingAtIndex:0];
-            p([NSString stringWithFormat:@"%@LAYER %@ frame=%@ filters=%@",pad,x.class,NSStringFromRect(x.frame),x.filters]);
-            for(id f in x.filters){ @try { p([NSString stringWithFormat:@"%@ FILTER class=%@ name=%@ type=%@ keys=%@",pad,[f class],[f valueForKey:@"name"],[f valueForKey:@"filterType"],[f valueForKey:@"inputKeys"]]); } @catch(NSException *e){} 
-              for(NSString *k in @[@"inputInnerRefractionAmount",@"inputInnerRefractionHeight",@"inputOuterRefractionAmount",@"inputOuterRefractionHeight",@"inputRefractionDistance0",@"inputRefractionDistance1",@"inputRefractionOpacity",@"inputBlurRadius",@"inputBlurOpacity0",@"inputBlurOpacity1",@"inputBlurOpacity2",@"inputBlurOpacity3",@"inputBlurOpacity4",@"inputBlurDistance0",@"inputBlurDistance1",@"inputBlurDistance2",@"inputBlurDistance3",@"inputBlurDistance4",@"inputFaceOpacity",@"inputFaceColorMatrixWhite",@"inputFaceColorMatrixBlack",@"inputFaceColorMatrixSaturation",@"inputFaceColorMatrixFillColor",@"inputBleedAmount",@"inputBleedHeight",@"inputBleedBlurRadius",@"inputBleedDistance0",@"inputBleedDistance1",@"inputBleedOpacity",@"inputBleedDarkenBlend",@"inputBleedColorMatrixWhite",@"inputBleedColorMatrixBlack",@"inputBleedColorMatrixSaturation",@"inputBleedColorMatrixFillColor",@"inputShadowOffset",@"inputShadowAmount",@"inputShadowHeight",@"inputShadowOpacity",@"inputShadowColorMatrixWhite",@"inputShadowColorMatrixBlack",@"inputShadowColorMatrixSaturation",@"inputShadowColorMatrixFillColor",@"inputShadowDistanceOffset",@"inputShadowBlurRadius",@"inputShadowRadius",@"inputSDRHoldingToneEnabled",@"inputSDRHoldingToneWhite",@"inputSDRGradientDistance0",@"inputSDRGradientDistance1",@"inputSDRShadowOpacity",@"inputMaxHeadroom",@"inputShadowVibrancyContribution",@"inputClamp",@"inputClampPreserveHue"]) { @try { id v=[f valueForKey:k]; if(v) p([NSString stringWithFormat:@"%@   %@ = %@",pad,k,v]); }@catch(NSException *e){} }
-            }
-            for(CALayer *q in x.sublayers)walk(q,d+1);
-          }
-          @interface W: NSWindow @end
-          @implementation W -(BOOL)canBecomeKeyWindow{return YES;} -(BOOL)canBecomeMainWindow{return YES;} @end
-          static void pump(double s){NSDate*u=[NSDate dateWithTimeIntervalSinceNow:s];while(u.timeIntervalSinceNow>0){NSEvent*e=[NSApp nextEventMatchingMask:NSEventMaskAny untilDate:[NSDate dateWithTimeIntervalSinceNow:.02] inMode:NSDefaultRunLoopMode dequeue:YES];if(e)[NSApp sendEvent:e];}}
 
-          static void walkInputs(CALayer *x, int d, NSString *tag) {
-            if (!x) return;
-            for (id f in x.filters) {
-              NSString *name = @""; @try { name = [f valueForKey:@"name"] ?: @""; } @catch (...) {}
-              if (![name isEqualToString:@"glassBackground"]) continue;
-              P([NSString stringWithFormat:@"BEGIN %@ frame=%@", tag, NSStringFromRect(x.frame)]);
-              NSArray *keys = @[@"inputInnerRefractionAmount",@"inputInnerRefractionHeight",@"inputOuterRefractionAmount",@"inputOuterRefractionHeight",@"inputRefractionDistance0",@"inputRefractionDistance1",@"inputRefractionOpacity",@"inputBlurRadius",@"inputBlurOpacity0",@"inputBlurOpacity1",@"inputBlurOpacity2",@"inputBlurOpacity3",@"inputBlurOpacity4",@"inputBlurDistance0",@"inputBlurDistance1",@"inputBlurDistance2",@"inputBlurDistance3",@"inputBlurDistance4",@"inputFaceOpacity",@"inputFaceColorMatrixWhite",@"inputFaceColorMatrixBlack",@"inputFaceColorMatrixSaturation",@"inputFaceColorMatrixFillColor",@"inputBleedAmount",@"inputBleedHeight",@"inputBleedBlurRadius",@"inputBleedDistance0",@"inputBleedDistance1",@"inputBleedOpacity",@"inputBleedDarkenBlend",@"inputBleedColorMatrixWhite",@"inputBleedColorMatrixBlack",@"inputBleedColorMatrixSaturation",@"inputBleedColorMatrixFillColor",@"inputShadowOffset",@"inputShadowAmount",@"inputShadowHeight",@"inputShadowOpacity",@"inputShadowColorMatrixWhite",@"inputShadowColorMatrixBlack",@"inputShadowColorMatrixSaturation",@"inputShadowColorMatrixFillColor",@"inputShadowDistanceOffset",@"inputShadowBlurRadius",@"inputShadowRadius",@"inputSDRHoldingToneEnabled",@"inputSDRHoldingToneWhite",@"inputSDRGradientDistance0",@"inputSDRGradientDistance1",@"inputSDRShadowOpacity",@"inputMaxHeadroom",@"inputShadowVibrancyContribution",@"inputClamp",@"inputClampPreserveHue"];
-              for (NSString *k in keys) { @try { id v=[f valueForKey:k]; if(v) P([NSString stringWithFormat:@"%@ = %@",k,v]); } @catch (...) {} }
-              P([NSString stringWithFormat:@"END %@",tag]);
-            }
-            for (CALayer *q in x.sublayers) walkInputs(q,d+1,tag);
+          static FILE *LOG = NULL;
+          static void P(NSString *s) { fprintf(LOG, "%s\n", s.UTF8String); fflush(LOG); }
+
+          static NSArray *KEYS(void) {
+              return @[@"inputInnerRefractionAmount", @"inputInnerRefractionHeight", @"inputOuterRefractionAmount", @"inputOuterRefractionHeight",
+                       @"inputRefractionDistance0", @"inputRefractionDistance1", @"inputRefractionOpacity", @"inputBlurRadius",
+                       @"inputBlurOpacity0", @"inputBlurOpacity1", @"inputBlurOpacity2", @"inputBlurOpacity3", @"inputBlurOpacity4",
+                       @"inputBlurDistance0", @"inputBlurDistance1", @"inputBlurDistance2", @"inputBlurDistance3", @"inputBlurDistance4",
+                       @"inputFaceOpacity", @"inputFaceColorMatrixWhite", @"inputFaceColorMatrixBlack", @"inputFaceColorMatrixSaturation",
+                       @"inputFaceColorMatrixFillColor", @"inputBleedAmount", @"inputBleedHeight", @"inputBleedBlurRadius",
+                       @"inputBleedDistance0", @"inputBleedDistance1", @"inputBleedOpacity", @"inputBleedDarkenBlend",
+                       @"inputBleedColorMatrixWhite", @"inputBleedColorMatrixBlack", @"inputBleedColorMatrixSaturation", @"inputBleedColorMatrixFillColor",
+                       @"inputShadowOffset", @"inputShadowAmount", @"inputShadowHeight", @"inputShadowOpacity",
+                       @"inputShadowColorMatrixWhite", @"inputShadowColorMatrixBlack", @"inputShadowColorMatrixSaturation", @"inputShadowColorMatrixFillColor",
+                       @"inputShadowDistanceOffset", @"inputShadowBlurRadius", @"inputShadowRadius",
+                       @"inputSDRHoldingToneEnabled", @"inputSDRHoldingToneWhite", @"inputSDRGradientDistance0", @"inputSDRGradientDistance1",
+                       @"inputSDRShadowOpacity", @"inputMaxHeadroom", @"inputShadowVibrancyContribution", @"inputClamp", @"inputClampPreserveHue"];
           }
-          int main(int argc, const char **argv) { @autoreleasepool {
-            NSString *out=argc>1?[NSString stringWithUTF8String:argv[1]]:@"."; [[NSFileManager defaultManager] createDirectoryAtPath:out withIntermediateDirectories:YES attributes:nil error:nil]; LOG=fopen([[out stringByAppendingPathComponent:@"sweep.txt"] UTF8String],"w");
-            [NSApplication sharedApplication]; [NSApp setActivationPolicy:NSApplicationActivationPolicyRegular]; [NSApp finishLaunching];
-            NSWindow *win=[[NSWindow alloc] initWithContentRect:NSMakeRect(100,100,900,600) styleMask:NSWindowStyleMaskTitled backing:NSBackingStoreBuffered defer:NO]; NSView *root=[[NSView alloc]initWithFrame:NSMakeRect(0,0,900,600)]; root.wantsLayer=YES; win.contentView=root;
-            Class G=NSClassFromString(@"NSGlassEffectView"), C=NSClassFromString(@"NSGlassEffectContainerView");
-            NSArray *sizes=@[@[@"60x60",@60,@60,@30],@[@"160x44",@160,@44,@22],@[@"300x100",@300,@100,@28],@[@"300x200",@300,@200,@28],@[@"600x300",@600,@300,@40]];
-            NSArray *modes=@[@[@"light_regular",@0,@0],@[@"light_clear",@0,@1],@[@"dark_regular",@1,@0],@[@"dark_clear",@1,@1]];
-            [NSApp activateIgnoringOtherApps:YES]; [win makeKeyAndOrderFront:nil]; pump(1);
-            for(NSArray *mode in modes) for(NSArray *sz in sizes) {
-              for(NSView *v in [[[root subviews] copy] autorelease]) [v removeFromSuperview];
-              [win setAppearance:[NSAppearance appearanceNamed:([mode[1] intValue]?NSAppearanceNameDarkAqua:NSAppearanceNameAqua)]];
-              NSView *box=C?[[C alloc]initWithFrame:root.bounds]:root; if(box!=root)[root addSubview:box];
-              NSView *g=[[G alloc]initWithFrame:NSMakeRect(100,100,[sz[1] doubleValue],[sz[2] doubleValue])]; @try{[g setValue:sz[3] forKey:@"cornerRadius"];[g setValue:mode[2] forKey:@"style"];}@catch(...){ }
-              [box addSubview:g]; [win makeKeyAndOrderFront:nil]; pump(1.0); walkInputs(root,0,[NSString stringWithFormat:@"%@_%@",mode[0],sz[0]]);
-            }
-            P(@"DONE"); fclose(LOG); return 0;
-          } }
+
+          // Walk the layer tree and print every glassBackground filter's configured inputs.
+          static void walkLayer(CALayer *layer, NSString *tag) {
+              if (!layer) return;
+              for (id filter in layer.filters) {
+                  NSString *name = @"";
+                  @try { name = [filter valueForKey:@"name"] ?: @""; } @catch (NSException *e) { }
+                  if (![name isEqualToString:@"glassBackground"]) continue;
+                  P([NSString stringWithFormat:@"BEGIN %@ layerFrame=%@", tag, NSStringFromRect(layer.frame)]);
+                  for (NSString *k in KEYS()) {
+                      @try {
+                          id v = [filter valueForKey:k];
+                          if (v) P([NSString stringWithFormat:@"%@ = %@", k, v]);
+                      } @catch (NSException *e) { P([NSString stringWithFormat:@"%@ = <error %@>", k, e.reason]); }
+                  }
+                  P([NSString stringWithFormat:@"END %@", tag]);
+              }
+              for (CALayer *sub in layer.sublayers) walkLayer(sub, tag);
+          }
+
+          @interface SweepWindow : NSWindow
+          @end
+          @implementation SweepWindow
+          - (BOOL)canBecomeKeyWindow { return YES; }
+          - (BOOL)canBecomeMainWindow { return YES; }
+          @end
+
+          static void pumpFor(double seconds) {
+              NSDate *until = [NSDate dateWithTimeIntervalSinceNow:seconds];
+              while ([until timeIntervalSinceNow] > 0) {
+                  NSEvent *e = [NSApp nextEventMatchingMask:NSEventMaskAny untilDate:[NSDate dateWithTimeIntervalSinceNow:0.02] inMode:NSDefaultRunLoopMode dequeue:YES];
+                  if (e) [NSApp sendEvent:e];
+              }
+          }
+
+          int main(int argc, const char **argv) {
+              @autoreleasepool {
+                  NSString *out = argc > 1 ? [NSString stringWithUTF8String:argv[1]] : @".";
+                  [[NSFileManager defaultManager] createDirectoryAtPath:out withIntermediateDirectories:YES attributes:nil error:nil];
+                  LOG = fopen([[out stringByAppendingPathComponent:@"sweep.txt"] UTF8String], "w");
+
+                  [NSApplication sharedApplication];
+                  [NSApp setActivationPolicy:NSApplicationActivationPolicyRegular];
+                  [NSApp finishLaunching];
+
+                  SweepWindow *win = [[SweepWindow alloc] initWithContentRect:NSMakeRect(100, 100, 900, 600)
+                                                                    styleMask:NSWindowStyleMaskTitled
+                                                                      backing:NSBackingStoreBuffered
+                                                                        defer:NO];
+                  NSView *root = [[NSView alloc] initWithFrame:NSMakeRect(0, 0, 900, 600)];
+                  [root setWantsLayer:YES];
+                  [win setContentView:root];
+
+                  Class G = NSClassFromString(@"NSGlassEffectView");
+                  Class C = NSClassFromString(@"NSGlassEffectContainerView");
+                  P([NSString stringWithFormat:@"classes glass=%@ container=%@", G, C]);
+                  if (!G) { P(@"NSGlassEffectView missing on this OS"); fclose(LOG); return 0; }
+
+                  // name, width, height, corner radius
+                  NSArray *sizes = @[@[@"60x60", @60, @60, @30], @[@"160x44", @160, @44, @22], @[@"300x100", @300, @100, @28],
+                                     @[@"300x200", @300, @200, @28], @[@"600x300", @600, @300, @40]];
+                  // name, dark (0/1), style (0 regular, 1 clear)
+                  NSArray *modes = @[@[@"light_regular", @0, @0], @[@"light_clear", @0, @1], @[@"dark_regular", @1, @0], @[@"dark_clear", @1, @1]];
+
+                  [NSApp activateIgnoringOtherApps:YES];
+                  [win makeKeyAndOrderFront:nil];
+                  pumpFor(1.0);
+
+                  for (NSArray *mode in modes) {
+                      for (NSArray *size in sizes) {
+                          NSArray *old = [root.subviews copy];
+                          for (NSView *v in old) [v removeFromSuperview];
+
+                          BOOL dark = [mode[1] intValue] != 0;
+                          [win setAppearance:[NSAppearance appearanceNamed:(dark ? NSAppearanceNameDarkAqua : NSAppearanceNameAqua)]];
+
+                          NSView *box = C ? [[C alloc] initWithFrame:root.bounds] : root;
+                          if (box != root) [root addSubview:box];
+
+                          NSView *glass = [[G alloc] initWithFrame:NSMakeRect(100, 100, [size[1] doubleValue], [size[2] doubleValue])];
+                          @try {
+                              [glass setValue:size[3] forKey:@"cornerRadius"];
+                              [glass setValue:mode[2] forKey:@"style"];
+                          } @catch (NSException *e) {
+                              P([NSString stringWithFormat:@"setValue failed %@", e.reason]);
+                          }
+                          [box addSubview:glass];
+
+                          [win makeKeyAndOrderFront:nil];
+                          pumpFor(1.0);
+                          NSString *tag = [NSString stringWithFormat:@"%@_%@", mode[0], size[0]];
+                          walkLayer(root.layer, tag);
+                      }
+                  }
+                  P(@"DONE");
+                  fclose(LOG);
+              }
+              return 0;
+          }
 
           OBJC_EOF
           defaults write com.apple.universalaccess reduceTransparency -bool false
