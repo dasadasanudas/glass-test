@@ -1,0 +1,93 @@
+name: apps-ref
+on: workflow_dispatch
+jobs:
+  apps:
+    runs-on: macos-26
+    timeout-minutes: 30
+    steps:
+      - name: Reference shots + UI layout of popular macOS apps (Reduce Transparency OFF, light + dark)
+        shell: bash
+        run: |
+          mkdir -p "$RUNNER_TEMP/scripts"
+          cat > "$RUNNER_TEMP/scripts/ax.js" <<'AX_EOF'
+          // dump the UI element tree (role, name, position, size) of the frontmost app's front window
+          function run(argv) {
+            const se = Application('System Events');
+            const p = se.processes.whose({ frontmost: true })[0];
+            const out = []; let n = 0;
+            function walk(e, d) {
+              if (n > 900 || d > 9) return;
+              n++;
+              let r = {};
+              try { r.role = e.role(); } catch (x) {}
+              try { r.sub = e.subrole(); } catch (x) {}
+              try { r.name = e.name(); } catch (x) {}
+              try { r.desc = e.description(); } catch (x) {}
+              try { const v = e.value(); if (typeof v === 'string' || typeof v === 'number') r.value = String(v).slice(0, 60); } catch (x) {}
+              try { r.pos = e.position(); r.size = e.size(); } catch (x) {}
+              r.depth = d; out.push(r);
+              let kids = [];
+              try { kids = e.uiElements(); } catch (x) {}
+              for (let i = 0; i < kids.length && i < 80; i++) walk(kids[i], d + 1);
+            }
+            try { walk(p.windows[0], 0); } catch (x) { out.push({ error: String(x) }); }
+            try { const mb = p.menuBars[0].menuBarItems(); out.push({ menubar: mb.map((m) => m.name()) }); } catch (x) {}
+            return JSON.stringify(out);
+          }
+
+          AX_EOF
+          set +e
+          OUT="$RUNNER_TEMP/apps"; mkdir -p "$OUT/shots" "$OUT/ax"
+          S="$RUNNER_TEMP/scripts"
+          sw_vers > "$OUT/os.txt"; system_profiler SPDisplaysDataType > "$OUT/display.txt" 2>&1
+          defaults write com.apple.universalaccess reduceTransparency -bool false
+          defaults write com.apple.universalaccess increaseContrast -bool false
+          LOG="$OUT/log.txt"
+          dark() { osascript -e "tell application \"System Events\" to tell appearance preferences to set dark mode to $1" >> "$LOG" 2>&1; sleep 2; }
+          front_bounds() { osascript -e 'tell application "System Events" to tell (first process whose frontmost is true) to get {position, size} of window 1' 2>>"$LOG" | tr -d ','; }
+          shot_app() {
+            local app="$1" tag="$2" w="${3:-1000}" h="${4:-680}"
+            local safe=$(echo "$app" | tr ' ' '_')
+            open -a "$app" >> "$LOG" 2>&1; sleep 7
+            osascript -e "tell application \"$app\" to activate" >> "$LOG" 2>&1; sleep 1
+            # Finder/Notes etc: make sure a window exists
+            [ "$app" = "Finder" ] && osascript -e 'tell application "Finder" to if (count of Finder windows) = 0 then make new Finder window to (path to home folder)' >> "$LOG" 2>&1
+            [ "$app" = "TextEdit" ] && osascript -e 'tell application "TextEdit" to make new document with properties {text:"The quick brown fox jumps over the lazy dog. Liquid Glass 0123456789"}' >> "$LOG" 2>&1
+            osascript -e "tell application \"System Events\" to tell (first process whose frontmost is true) to try
+              set position of window 1 to {60, 60}
+              set size of window 1 to {$w, $h}
+            end try" >> "$LOG" 2>&1
+            sleep 3
+            read X Y W H <<< "$(front_bounds)"
+            echo "$app $tag bounds=$X,$Y,$W,$H" >> "$LOG"
+            if [ -n "$W" ]; then screencapture -x -R "$((X-40)),$((Y-40)),$((W+80)),$((H+80))" "$OUT/shots/${safe}_${tag}.png"; fi
+            screencapture -x "$OUT/shots/${safe}_${tag}_fullscreen.png"
+            timeout 90 osascript -l JavaScript "$S/ax.js" > "$OUT/ax/${safe}_${tag}.json" 2>>"$LOG"
+            osascript -e "tell application \"$app\" to quit" >> "$LOG" 2>&1; sleep 2
+          }
+          APPS=("Finder" "Calculator" "System Settings" "Notes" "TextEdit" "Safari" "Calendar" "Reminders" "Activity Monitor" "Terminal" "Font Book" "Preview" "Music" "Clock")
+          for mode in light dark; do
+            [ "$mode" = dark ] && dark true || dark false
+            for a in "${APPS[@]}"; do shot_app "$a" "$mode"; done
+            # system UI: Dock + menu bar, a pulled-down menu, Control Center, Spotlight
+            open -a Finder; sleep 3; osascript -e 'tell application "Finder" to activate'; sleep 1
+            screencapture -x "$OUT/shots/desktop_${mode}.png"
+            osascript -e 'tell application "System Events" to tell process "Finder" to click menu bar item "File" of menu bar 1' >> "$LOG" 2>&1 &
+            sleep 2; screencapture -x "$OUT/shots/menu_file_${mode}.png"; osascript -e 'tell application "System Events" to key code 53' >> "$LOG" 2>&1; sleep 1
+            osascript -e 'tell application "System Events" to tell process "ControlCenter" to click (first menu bar item of menu bar 1 whose description contains "Control")' >> "$LOG" 2>&1 &
+            sleep 3; screencapture -x "$OUT/shots/controlcenter_${mode}.png"; osascript -e 'tell application "System Events" to key code 53' >> "$LOG" 2>&1; sleep 1
+            osascript -e 'tell application "System Events" to keystroke space using command down' >> "$LOG" 2>&1; sleep 2
+            osascript -e 'tell application "System Events" to keystroke "calc"' >> "$LOG" 2>&1; sleep 2
+            screencapture -x "$OUT/shots/spotlight_${mode}.png"; osascript -e 'tell application "System Events" to key code 53' >> "$LOG" 2>&1; sleep 1
+            osascript -e 'tell application "System Events" to tell process "Dock" to get {position, size} of list 1' >> "$OUT/ax/dock_${mode}.txt" 2>&1
+          done
+          dark false
+          ls "$OUT/shots" | wc -l; tail -n 30 "$LOG"
+          true
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: appsref
+          path: ${{ runner.temp }}/apps
+          if-no-files-found: warn
