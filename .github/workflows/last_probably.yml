@@ -1,0 +1,80 @@
+name: glass-defaults
+on: workflow_dispatch
+jobs:
+  defaults:
+    runs-on: macos-26
+    timeout-minutes: 8
+    steps:
+      - name: Read Apple's private glass effect defaults and filter keys
+        shell: bash
+        run: |
+          set +e
+          OUT="$RUNNER_TEMP/defaults"; mkdir -p "$OUT"; S="$RUNNER_TEMP/scripts"; mkdir -p "$S"
+          cat > "$S/probe.m" <<'M_EOF'
+                    #import <AppKit/AppKit.h>
+                    #import <QuartzCore/QuartzCore.h>
+                    #import <objc/runtime.h>
+                    #import <objc/message.h>
+
+                    static FILE *LOG;
+                    static void P(NSString *s) { fprintf(LOG, "%s\n", s.UTF8String); fflush(LOG); }
+                    static NSString *desc(id x) {
+                        if (!x) return @"<nil>";
+                        @try { return [NSString stringWithFormat:@"%@", x]; } @catch (...) { return @"<unprintable>"; }
+                    }
+                    static void dumpMethods(Class c) {
+                        unsigned n=0; Method *ms=class_copyMethodList(object_getClass(c), &n);
+                        P([NSString stringWithFormat:@"CLASS %@ classMethods=%u", NSStringFromClass(c), n]);
+                        for (unsigned i=0;i<n;i++) P([NSString stringWithFormat:@"  +%@ %s", NSStringFromSelector(method_getName(ms[i])), method_getTypeEncoding(ms[i])]);
+                        free(ms);
+                        n=0; ms=class_copyMethodList(c,&n);
+                        for (unsigned i=0;i<n;i++) P([NSString stringWithFormat:@"  -%@ %s", NSStringFromSelector(method_getName(ms[i])), method_getTypeEncoding(ms[i])]);
+                        free(ms);
+                    }
+                    static void dumpProps(Class c) {
+                        unsigned n=0; objc_property_t *ps=class_copyPropertyList(c,&n);
+                        for (unsigned i=0;i<n;i++) P([NSString stringWithFormat:@"  PROP %s %s", property_getName(ps[i]), property_getAttributes(ps[i])]);
+                        free(ps);
+                    }
+                    static void dumpClassDefaults(NSString *name) {
+                        Class c=NSClassFromString(name); if(!c){P([NSString stringWithFormat:@"MISSING %@",name]);return;}
+                        dumpMethods(c); dumpProps(c);
+                        @try { id d=[c performSelector:@selector(defaultValues)]; P([NSString stringWithFormat:@"DEFAULT_VALUES %@",desc(d)]); } @catch(NSException *e){P([NSString stringWithFormat:@"DEFAULT_ERR %@",e]);}
+                        @try { id a=[c performSelector:@selector(CA_attributes)]; P([NSString stringWithFormat:@"CA_ATTRIBUTES %@",desc(a)]); } @catch(NSException *e){P([NSString stringWithFormat:@"ATTR_ERR %@",e]);}
+                        id o=[c new];
+                        for(NSString *k in @[@"maskOffset",@"angle",@"curvature",@"height",@"amount",@"color",@"spread",@"global"]) {
+                            @try { id v=[o valueForKey:k]; P([NSString stringWithFormat:@"VALUE %@.%@ = %@",name,k,desc(v)]); } @catch(NSException *e) { }
+                        }
+                    }
+                    static void dumpFilter(void) {
+                        Class F=NSClassFromString(@"CAFilter"); P([NSString stringWithFormat:@"CAFilter=%@",F]); if(!F)return;
+                        id f=nil; @try { f=[F performSelector:@selector(filterWithType:) withObject:@"glassBackground"]; } @catch(NSException *e){P([NSString stringWithFormat:@"FILTER_ERR %@",e]);}
+                        P([NSString stringWithFormat:@"FILTER %@",desc(f)]);
+                        for(NSString *k in @[@"inputKeys",@"filterType",@"name",@"inputInnerRefractionAmount",@"inputOuterRefractionAmount",@"inputRefractionOffset",@"inputRefractionAngle",@"inputRefractionHeight",@"inputBlurRadius",@"inputFaceColorMatrixWhite",@"inputBleedAmount"]) {
+                            @try { P([NSString stringWithFormat:@"FILTER_VALUE %@ = %@",k,desc([f valueForKey:k])]); } @catch(NSException *e){ P([NSString stringWithFormat:@"FILTER_ERR %@ %@",k,e]); }
+                        }
+                    }
+                    int main(int argc,const char **argv){@autoreleasepool{
+                        NSString *out=argc>1?[NSString stringWithUTF8String:argv[1]]:@"."; [[NSFileManager defaultManager]createDirectoryAtPath:out withIntermediateDirectories:YES attributes:nil error:nil];
+                        LOG=fopen([[out stringByAppendingPathComponent:@"defaults.txt"] UTF8String],"w");
+                        [NSApplication sharedApplication]; [NSApp finishLaunching];
+                        P([NSString stringWithFormat:@"OS %@",[[NSProcessInfo processInfo]operatingSystemVersionString]]);
+                        dumpClassDefaults(@"CASDFGlassDisplacementEffect");
+                        dumpClassDefaults(@"CASDFGlassHighlightEffect");
+                        dumpFilter();
+                        P(@"DONE"); if(LOG)fclose(LOG);
+                    }return 0;}
+
+          M_EOF
+          clang -fobjc-arc -fobjc-exceptions -Wno-everything -framework AppKit -framework QuartzCore "$S/probe.m" -o "$RUNNER_TEMP/probe" > "$OUT/compile.txt" 2>&1
+          codesign -s - -f "$RUNNER_TEMP/probe" >/dev/null 2>&1
+          "$RUNNER_TEMP/probe" "$OUT" > "$OUT/stdout.txt" 2> "$OUT/stderr.txt"
+          echo '== compile =='; cat "$OUT/compile.txt"; echo '== stderr =='; cat "$OUT/stderr.txt"; echo '== defaults =='; cat "$OUT/defaults.txt"
+          true
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: glassdefaults
+          path: ${{ runner.temp }}/defaults
+          if-no-files-found: warn
