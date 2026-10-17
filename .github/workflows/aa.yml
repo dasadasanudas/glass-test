@@ -8,7 +8,7 @@ jobs:
       - name: Read configured glassBackground inputs from a real NSGlassEffectView
         shell: bash
         run: |
-          OUT="$RUNNER_TEMP/live"; mkdir -p "$OUT"; S="$RUNNER_TEMP/live.m"
+          OUT="$RUNNER_TEMP/live"; mkdir -p "$OUT"; S="$RUNNER_TEMP/live.m"; BIN="$RUNNER_TEMP/live-bin"
           cat > "$S" <<'OBJC_EOF'
           #import <AppKit/AppKit.h>
           #import <QuartzCore/QuartzCore.h>
@@ -28,9 +28,9 @@ jobs:
 
           OBJC_EOF
           defaults write com.apple.universalaccess reduceTransparency -bool false
-          clang -fobjc-arc -fobjc-exceptions -Wno-everything -framework AppKit -framework QuartzCore "$S" -o "$RUNNER_TEMP/live"
-          codesign -s - -f "$RUNNER_TEMP/live" >/dev/null 2>&1
-          "$RUNNER_TEMP/live" "$OUT"
+          clang -fobjc-arc -fobjc-exceptions -Wno-everything -framework AppKit -framework QuartzCore "$S" -o "$BIN"
+          codesign -s - -f "$BIN" >/dev/null 2>&1
+          "$BIN" "$OUT"
           cat "$OUT/live.txt"
       - uses: actions/upload-artifact@v4
         if: always()
