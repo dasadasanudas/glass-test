@@ -12,16 +12,15 @@ codesign -s - -f "$RUNNER_TEMP/cap" || true
 MODES="${LGX_MODES:-$(cat lgx/modes.txt 2>/dev/null || echo 'probe:move,detach,clone full')}"
 S=none
 if [ -x "$RUNNER_TEMP/cap" ]; then
-  for TRY in move detach clone; do
-    mkdir -p "$OUT/try-$TRY"
-    T 100 "$RUNNER_TEMP/cap" "$OUT/try-$TRY" "$TRY" probe 90 > "$OUT/try-$TRY/stdout.txt" 2>&1; echo "exit $?" >> "$OUT/try-$TRY/stdout.txt"
-    if grep -q '^DRAW .*glass_background' "$OUT/try-$TRY/log.txt" 2>/dev/null; then S=$TRY; break; fi
-  done
+  S=move; mkdir -p "$OUT/full"
+  T 560 "$RUNNER_TEMP/cap" "$OUT/full" "$S" full 540 > "$OUT/full/stdout.txt" 2>&1; echo "exit $?" >> "$OUT/full/stdout.txt"
 fi
 echo "$S" > "$OUT/strategy.txt"; echo "strategy=$S"
-if [ "$S" != none ]; then
-  mkdir -p "$OUT/full"
-  T 560 "$RUNNER_TEMP/cap" "$OUT/full" "$S" full 540 > "$OUT/full/stdout.txt" 2>&1; echo "exit $?" >> "$OUT/full/stdout.txt"
+# shrink the artifact: big render-target dumps duplicate the frame PNGs; 16-bit 4K wallpaper -> JPEG
+F="$OUT/full"
+if [ -d "$F" ]; then
+  find "$F/tex" -name '*_rt_*' -size +600k -delete 2>/dev/null
+  for f in "$F"/img/tahoe_t0_full.png; do [ -f "$f" ] && sips -s format jpeg -s formatOptions 95 "$f" --out "${f%.png}.jpg" >/dev/null 2>&1 && rm -f "$f"; done
 fi
 {
   echo "strategy=$S"; cat "$OUT/compile.txt"
@@ -40,4 +39,6 @@ cp "$OUT/summary.txt" "$OUT/compile.txt" "$OUT/system.txt" "$R/res/" 2>/dev/null
 for d in "$OUT"/try-* "$OUT/full"; do [ -d "$d" ] || continue; n=$(basename "$d"); head -c 400000 "$d/log.txt" > "$R/res/$n-log-head.txt" 2>/dev/null; tail -c 20000 "$d/stdout.txt" > "$R/res/$n-stdout.txt" 2>/dev/null; done
 echo "$GITHUB_RUN_ID $(git rev-parse HEAD)" > "$R/res/run_id.txt"
 ( cd "$R" && git init -q && git config user.name lgx-bot && git config user.email lgx-bot@users.noreply.github.com && git checkout -q -b lgx-results && git add res && git commit -qm "lgx capture $GITHUB_RUN_ID" && git push -q -f "https://x-access-token:${GH_TOKEN}@github.com/${REPO}.git" lgx-results ) || echo "publish failed"
+for d in "$OUT"/try-* "$OUT/full"; do [ -f "$d/log.txt" ] && gzip -9 -f "$d/log.txt"; done
+du -sh "$OUT" "$OUT"/full/* 2>/dev/null
 exit 0
