@@ -38,6 +38,9 @@ R="$RUNNER_TEMP/res"; mkdir -p "$R/res"
 cp "$OUT/summary.txt" "$OUT/compile.txt" "$OUT/system.txt" "$R/res/" 2>/dev/null
 for d in "$OUT"/try-* "$OUT/full"; do [ -d "$d" ] || continue; n=$(basename "$d"); head -c 400000 "$d/log.txt" > "$R/res/$n-log-head.txt" 2>/dev/null; tail -c 20000 "$d/stdout.txt" > "$R/res/$n-stdout.txt" 2>/dev/null; done
 echo "$GITHUB_RUN_ID $(git rev-parse HEAD)" > "$R/res/run_id.txt"
+# full capture as one zip on the public results branch (readable without a login)
+if [ -d "$OUT/full" ]; then ( cd "$OUT/full" && zip -qr -9 "$R/res/cap-full.zip" . ); ls -la "$R/res/cap-full.zip"; fi
+if [ -f "$R/res/cap-full.zip" ] && [ $(stat -f %z "$R/res/cap-full.zip") -gt 90000000 ]; then rm -f "$R/res/cap-full.zip"; ( cd "$OUT/full" && zip -qr -9 "$R/res/cap-full.zip" . -x 'tex/*.png' ); fi
 ( cd "$R" && git init -q && git config user.name lgx-bot && git config user.email lgx-bot@users.noreply.github.com && git checkout -q -b lgx-results && git add res && git commit -qm "lgx capture $GITHUB_RUN_ID" && git push -q -f "https://x-access-token:${GH_TOKEN}@github.com/${REPO}.git" lgx-results ) || echo "publish failed"
 for d in "$OUT"/try-* "$OUT/full"; do [ -f "$d/log.txt" ] && gzip -9 -f "$d/log.txt"; done
 du -sh "$OUT" "$OUT"/full/* 2>/dev/null
