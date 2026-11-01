@@ -164,17 +164,20 @@ static void setupWindow(int dark){
   gBox=C?[[C alloc]initWithFrame:r.bounds]:r;if(gBox!=r){gBox.appearance=gAp;[r addSubview:gBox];}
   [NSApp activateIgnoringOtherApps:YES];[gW makeKeyAndOrderFront:nil];pump(1.2);
 }
+static NSString*gFixKey=nil;static long gFixVal=0;
 static BOOL runCfg(int gw,int gh,double radius,int style,NSString*key,long value,BOOL content,NSColor*tint,double wait){
   NSView*g=[[gG alloc]initWithFrame:NSMakeRect((800-gw)/2.0,(500-gh)/2.0,gw,gh)];g.appearance=gAp;[gBox addSubview:g];
   BOOL ok=YES;NSMutableString*err=[NSMutableString string];
   @try{[g setValue:@(radius) forKey:@"cornerRadius"];[g setValue:@(style) forKey:@"style"];}@catch(NSException*x){ok=NO;[err appendFormat:@" base:%@",x.reason];}
   if(content){NSView*cv=[[NSView alloc]initWithFrame:NSMakeRect(0,0,gw,gh)];NSTextField*t=[NSTextField labelWithString:@"Liquid Glass Aa 123"];t.font=[NSFont systemFontOfSize:20 weight:NSFontWeightSemibold];t.frame=NSMakeRect(16,(gh-28)/2.0,gw-32,28);[cv addSubview:t];@try{[g setValue:cv forKey:@"contentView"];}@catch(NSException*x){[err appendFormat:@" content:%@",x.reason];}}
   if(tint){@try{[g setValue:tint forKey:@"tintColor"];}@catch(NSException*x){[err appendFormat:@" tint:%@",x.reason];}}
+  id fixback=nil;
+  if(gFixKey){@try{[g setValue:@(gFixVal) forKey:gFixKey];fixback=[g valueForKey:gFixKey];}@catch(NSException*x){[err appendFormat:@" fix:%@",x.reason];}}
   id readback=nil;
   if(key){@try{[g setValue:@(value) forKey:key];readback=[g valueForKey:key];}@catch(NSException*x){ok=NO;[err appendFormat:@" key:%@",x.reason];}}
   [NSApp activateIgnoringOtherApps:YES];[gW makeKeyAndOrderFront:nil];
   pump(wait);gCfg++;
-  P([NSString stringWithFormat:@"BEGIN_CFG idx=%d size=%dx%d radius=%g style=%d key=%@ value=%ld readback=%@ content=%d tint=%@ ok=%d err=%@ isKey=%d isMain=%d effective=%@ RT=%d",gCfg,gw,gh,radius,style,key?key:@"-",value,D(readback),(int)content,tint?D(tint):@"-",(int)ok,err,(int)gW.isKeyWindow,(int)gW.isMainWindow,g.effectiveAppearance.name,(int)NSWorkspace.sharedWorkspace.accessibilityDisplayShouldReduceTransparency]);
+  P([NSString stringWithFormat:@"BEGIN_CFG idx=%d fix=%@:%ld>%@ size=%dx%d radius=%g style=%d key=%@ value=%ld readback=%@ content=%d tint=%@ ok=%d err=%@ isKey=%d isMain=%d effective=%@ RT=%d",gCfg,gFixKey?gFixKey:@"-",gFixVal,D(fixback),gw,gh,radius,style,key?key:@"-",value,D(readback),(int)content,tint?D(tint):@"-",(int)ok,err,(int)gW.isKeyWindow,(int)gW.isMainWindow,g.effectiveAppearance.name,(int)NSWorkspace.sharedWorkspace.accessibilityDisplayShouldReduceTransparency]);
   gLayers=0;walk(gRoot.layer,@"0",0);
   P(@"END_CFG");fflush(stdout);
   [g removeFromSuperview];pump(0.05);
@@ -238,10 +241,32 @@ static void runIntro(void){
   P(@"END_INTRO");
 }
 
-static void runSweep(int dark,int sweepW,int sweepH,double sweepR,BOOL extras,double deadline){
+static NSDictionary*parseSpec(NSString*spec){
+  NSMutableDictionary*d=[NSMutableDictionary dictionary];BOOL first=YES;
+  for(NSString*p in [spec componentsSeparatedByCharactersInSet:NSCharacterSet.whitespaceCharacterSet]){
+    if(!p.length)continue;if(first){d[@"mode"]=p;first=NO;continue;}
+    NSRange r=[p rangeOfString:@"="];if(r.location==NSNotFound)continue;
+    d[[p substringToIndex:r.location]]=[p substringFromIndex:r.location+1];
+  }
+  return d;
+}
+static double num(NSDictionary*d,NSString*k,double def){NSString*v=d[k];return v?v.doubleValue:def;}
+static BOOL keyMatches(NSString*key,NSString*filters){
+  NSString*lk=key.lowercaseString;
+  for(NSString*f in [filters.lowercaseString componentsSeparatedByString:@","])if(f.length&&[lk containsString:f])return YES;
+  return NO;
+}
+static void runSweep(NSDictionary*sp){
   double t0=nowS();
+  int dark=(int)num(sp,@"dark",0),sw=(int)num(sp,@"w",600),shh=(int)num(sp,@"h",72),style=(int)num(sp,@"style",0);
+  double sr=num(sp,@"r",24),deadline=num(sp,@"deadline",60),wait=num(sp,@"wait",0.6);
+  BOOL extras=num(sp,@"extras",0)!=0,content=num(sp,@"content",0)!=0;
+  long vmin=(long)num(sp,@"vmin",0),vmax=(long)num(sp,@"vmax",40);
+  NSString*filters=sp[@"keys"]?sp[@"keys"]:@"variant";
+  NSString*fix=sp[@"fix"];
+  if(fix){NSRange r=[fix rangeOfString:@":"];if(r.location!=NSNotFound){gFixKey=[fix substringToIndex:r.location];gFixVal=(long)[fix substringFromIndex:r.location+1].integerValue;}}
   id<MTLDevice>dev=MTLCreateSystemDefaultDevice();
-  P([NSString stringWithFormat:@"BEGIN_PROCESS dark=%d sweep=%dx%d OS=%@ METAL=%@",dark,sweepW,sweepH,NSProcessInfo.processInfo.operatingSystemVersionString,dev?dev.name:@"<nil>"]);
+  P([NSString stringWithFormat:@"BEGIN_PROCESS spec=%@ OS=%@ METAL=%@",sp,NSProcessInfo.processInfo.operatingSystemVersionString,dev?dev.name:@"<nil>"]);
   setupWindow(dark);
   NSArray*ints=setterKeys(gG,YES);
   if(extras){
@@ -250,18 +275,18 @@ static void runSweep(int dark,int sweepW,int sweepH,double sweepR,BOOL extras,do
     for(int s=0;s<2;s++)runCfg(600,72,24,s,nil,0,NO,nil,0.8);
   }
   for(NSArray*k in ints){
-    NSString*key=k[0];if(![key.lowercaseString containsString:@"variant"])continue;
+    NSString*key=k[0];if(!keyMatches(key,filters))continue;
     int fails=0;
-    for(long v=0;v<=40&&fails<3;v++){if(nowS()-t0>deadline){P(@"DEADLINE_STOP");return;}if(!runCfg(sweepW,sweepH,sweepR,0,key,v,NO,nil,0.6))fails++;else fails=0;}
+    for(long v=vmin;v<=vmax&&fails<3;v++){if(nowS()-t0>deadline){P(@"DEADLINE_STOP");return;}if(!runCfg(sw,shh,sr,style,key,v,content,nil,wait))fails++;else fails=0;}
   }
   if(!extras)return;
   for(NSArray*k in ints){
     NSString*key=k[0];NSString*lk=key.lowercaseString;
-    if([lk containsString:@"variant"]||[lk isEqualToString:@"style"])continue;
+    if(keyMatches(key,filters)||[lk isEqualToString:@"style"])continue;
     BOOL lens=[lk containsString:@"lens"]||[lk containsString:@"content"];
-    for(long v=0;v<=3;v++){if(nowS()-t0>deadline){P(@"DEADLINE_STOP");return;}runCfg(600,72,24,0,key,v,NO,nil,0.6);if(lens)runCfg(600,72,24,0,key,v,YES,nil,0.6);}
+    for(long v=0;v<=3;v++){if(nowS()-t0>deadline){P(@"DEADLINE_STOP");return;}runCfg(600,72,24,0,key,v,NO,nil,wait);if(lens)runCfg(600,72,24,0,key,v,YES,nil,wait);}
   }
-  if(nowS()-t0<deadline){runCfg(600,72,24,0,nil,0,YES,nil,0.6);runCfg(600,72,24,0,nil,0,YES,NSColor.systemBlueColor,0.6);runCfg(600,72,24,1,nil,0,YES,NSColor.systemBlueColor,0.6);}
+  if(nowS()-t0<deadline){runCfg(600,72,24,0,nil,0,YES,nil,wait);runCfg(600,72,24,0,nil,0,YES,NSColor.systemBlueColor,wait);runCfg(600,72,24,1,nil,0,YES,NSColor.systemBlueColor,wait);}
 }
 
 static void sh(NSString*cmd,NSString*file){
@@ -282,11 +307,16 @@ int main(int argc,const char**argv){@autoreleasepool{
     sh([NSString stringWithFormat:@"echo '== sw_vers'; sw_vers; uname -a; echo '== GPU'; system_profiler SPDisplaysDataType 2>&1 | head -60; echo '== dock defaults'; defaults read com.apple.dock 2>&1 | head -120; echo '== screencapture'; screencapture -x %@/screen-before.png 2>&1; ls -la %@",q,q],[out stringByAppendingPathComponent:@"system.txt"]);
     sh(@"D=/System/Library/CoreServices/Dock.app/Contents/MacOS/Dock; echo '== otool'; otool -L \"$D\" 2>&1 | head -150; echo '== strings'; (strings -a \"$D\" 2>/dev/null || LC_ALL=C grep -a -o -E '[[:print:]]{5,}' \"$D\") | grep -i -E 'glass|backdrop|sdf|variant|refract|lens|material|blur|portal|tile|magnif' | sort -u | head -800; echo '== resources'; ls -la /System/Library/CoreServices/Dock.app/Contents/Resources 2>&1 | head -150",[out stringByAppendingPathComponent:@"dock-strings.txt"]);
     sh([NSString stringWithFormat:@"ls -la '/System/Library/Desktop Pictures/' 2>&1; echo '== find'; find '/System/Library/Desktop Pictures' -maxdepth 3 2>/dev/null | head -300; mkdir -p %@/wallpapers; find '/System/Library/Desktop Pictures' -maxdepth 3 -iname '*tahoe*' -type f -size -40M | head -6 | while IFS= read -r f; do cp \"$f\" %@/wallpapers/; done; ls -la %@/wallpapers",q,q,q],[out stringByAppendingPathComponent:@"desktop-pictures.txt"]);
+    sh([NSString stringWithFormat:@"if [ -f ./probe_extra.sh ]; then sh ./probe_extra.sh %@; else echo no-extra; fi",q],[out stringByAppendingPathComponent:@"extra.txt"]);
     printf("SHELL_DONE elapsed=%.1f\n",nowS()-t0);fflush(stdout);
-    NSArray*modes=@[@"intro",@"light-main",@"dark-main",@"light-300"];
+    NSArray*modes=@[@"intro",@"sweep dark=0 w=600 h=72 r=24 extras=1 deadline=85",@"sweep dark=1 w=600 h=72 r=24 extras=1 deadline=50",@"sweep dark=0 w=300 h=200 r=28 deadline=35"];
+    NSString*mf=[NSString stringWithContentsOfFile:@"probe_modes.txt" encoding:NSUTF8StringEncoding error:nil];
+    if(mf){NSMutableArray*mm=[NSMutableArray array];for(NSString*line in [mf componentsSeparatedByString:@"\n"]){NSString*t=[line stringByTrimmingCharactersInSet:NSCharacterSet.whitespaceAndNewlineCharacterSet];if(t.length&&![t hasPrefix:@"#"])[mm addObject:t];}if(mm.count)modes=mm;}
+    int childIndex=0;
     for(NSString*m in modes){
+      childIndex++;char idx[16];snprintf(idx,sizeof idx,"%d",childIndex);
       if(nowS()-t0>225){printf("PARENT_DEADLINE skip %s\n",m.UTF8String);continue;}
-      char*args[]={(char*)argv[0],"--child",(char*)m.UTF8String,(char*)argv[1],NULL};
+      char*args[]={(char*)argv[0],"--child",idx,(char*)m.UTF8String,(char*)argv[1],NULL};
       pid_t pid;int r=posix_spawn(&pid,argv[0],NULL,NULL,args,environ);
       if(r){printf("SPAWN_ERROR %s %d\n",m.UTF8String,r);continue;}
       int st=0;waitpid(pid,&st,0);
@@ -296,15 +326,15 @@ int main(int argc,const char**argv){@autoreleasepool{
     printf("PARENT_DONE elapsed=%.1f\n",nowS()-t0);
     return 0;
   }
-  if(argc!=4||strcmp(argv[1],"--child"))return 4;
-  NSString*mode=[NSString stringWithUTF8String:argv[2]];NSString*out=[NSString stringWithUTF8String:argv[3]];
-  NSString*file=[out stringByAppendingPathComponent:[mode stringByAppendingString:@".txt"]];
+  if(argc!=5||strcmp(argv[1],"--child"))return 4;
+  NSString*spec=[NSString stringWithUTF8String:argv[3]];NSString*out=[NSString stringWithUTF8String:argv[4]];
+  NSString*file=[out stringByAppendingPathComponent:[NSString stringWithFormat:@"child-%s.txt",argv[2]]];
   if(!freopen(file.fileSystemRepresentation,"w",stdout))return 6;
   setvbuf(stdout,NULL,_IOLBF,0);
-  if([mode isEqualToString:@"intro"])runIntro();
-  else if([mode isEqualToString:@"light-main"])runSweep(0,600,72,24,YES,85);
-  else if([mode isEqualToString:@"dark-main"])runSweep(1,600,72,24,YES,50);
-  else if([mode isEqualToString:@"light-300"])runSweep(0,300,200,28,NO,35);
+  P([@"SPEC " stringByAppendingString:spec]);
+  NSDictionary*sp=parseSpec(spec);
+  if([sp[@"mode"] isEqualToString:@"intro"])runIntro();
+  else if([sp[@"mode"] isEqualToString:@"sweep"])runSweep(sp);
   P(@"END_PROCESS");fflush(stdout);
   return 0;
 }}
