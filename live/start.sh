@@ -6,7 +6,7 @@ T() { perl -e 'alarm shift; exec @ARGV' "$@"; }
 MIN="${MINUTES:-}"; [ -z "$MIN" ] && MIN=$(cat live/minutes.txt 2>/dev/null || echo 60)
 MIN=$(( MIN > 340 ? 340 : MIN ))
 if [ -n "$LIVE_PASSWORD" ]; then PW="${LIVE_PASSWORD:0:8}"; NOTE="password: your LIVE_MAC_PASSWORD secret (first 8 characters)"
-else PW=$(LC_ALL=C tr -dc 'A-Za-z0-9' </dev/urandom | head -c 8); NOTE="no LIVE_MAC_PASSWORD secret set: a random password was used (only the test key can read it)"; fi
+else PW=$(openssl rand -hex 4); NOTE="no LIVE_MAC_PASSWORD secret set: a random password was used (only the test key can read it)"; fi
 echo "::add-mask::$PW"
 START=$(date -u '+%Y-%m-%d %H:%M'); END=$(date -u -v+${MIN}M '+%Y-%m-%d %H:%M' 2>/dev/null)
 URL=""; VNC="?"; WEB="?"; CODES=""
