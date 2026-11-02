@@ -1,13 +1,14 @@
 #!/bin/bash
 # Live Mac: turns on Screen Sharing on this runner, serves it as a web page (noVNC) and opens a public
 # HTTPS link (Cloudflare quick tunnel). Progress and the link go to s/status.txt on the live-status branch
-# and the job log. Stop it any time by cancelling the run in the Actions tab.
+# and the job log. Log in with the username shown there and your password. Stop it by cancelling the run.
 T() { perl -e 'alarm shift; exec @ARGV' "$@"; }
 MIN="${MINUTES:-}"; [ -z "$MIN" ] && MIN=$(cat live/minutes.txt 2>/dev/null || echo 60)
 MIN=$(( MIN > 340 ? 340 : MIN ))
-if [ -n "$LIVE_PASSWORD" ]; then PW="${LIVE_PASSWORD:0:8}"; NOTE="password: your LIVE_MAC_PASSWORD secret (first 8 characters)"
+if [ -n "$LIVE_PASSWORD" ]; then PW="$LIVE_PASSWORD"; NOTE="password: your LIVE_MAC_PASSWORD secret"
 else PW=$(openssl rand -hex 4); NOTE="no LIVE_MAC_PASSWORD secret set: a random password was used (only the test key can read it)"; fi
 echo "::add-mask::$PW"
+U=$(whoami)
 START=$(date -u '+%Y-%m-%d %H:%M'); END=$(date -u -v+${MIN}M '+%Y-%m-%d %H:%M' 2>/dev/null)
 URL=""; VNC="?"; WEB="?"; CODES=""
 T 30 gh auth setup-git >/dev/null 2>&1 || true
@@ -16,6 +17,7 @@ publish() {
   {
     echo "state: $1"
     echo "link: ${URL:-none}/vnc.html?autoconnect=1&resize=scale"
+    echo "username: $U"
     echo "screen sharing: $VNC"
     echo "web page (local check): $WEB"
     echo "step exit codes: $CODES"
@@ -29,9 +31,10 @@ publish() {
   ( cd "$D" && git init -q && git config user.name lgx-bot && git config user.email lgx-bot@users.noreply.github.com && git checkout -q -b live-status && git add s && git commit -qm "live mac $1" && T 60 git push -q -f "https://github.com/${REPO}.git" live-status ) || echo "publish failed"
 }
 publish starting
+T 30 sudo dscl . -passwd "/Users/$U" "$PW" > /tmp/acct.txt 2>&1; CODES="$CODES $?"
 K=/System/Library/CoreServices/RemoteManagement/ARDAgent.app/Contents/Resources/kickstart
 T 60 sudo "$K" -configure -allowAccessFor -allUsers -privs -all > /tmp/share1.txt 2>&1; CODES="$CODES $?"
-T 60 sudo "$K" -configure -clientopts -setvnclegacy -vnclegacy yes -setvncpw -vncpw "$PW" > /tmp/share2.txt 2>&1; CODES="$CODES $?"
+T 60 sudo "$K" -configure -clientopts -setvnclegacy -vnclegacy yes -setvncpw -vncpw "${PW:0:8}" > /tmp/share2.txt 2>&1; CODES="$CODES $?"
 T 60 sudo "$K" -restart -agent -console > /tmp/share3.txt 2>&1; CODES="$CODES $?"
 T 60 sudo "$K" -activate > /tmp/share4.txt 2>&1; CODES="$CODES $?"
 T 20 sudo launchctl enable system/com.apple.screensharing > /tmp/share5.txt 2>&1; CODES="$CODES $?"
@@ -51,7 +54,7 @@ tar -xzf /tmp/cf.tgz -C /tmp 2>/dev/null; CODES="$CODES $?"; chmod +x /tmp/cloud
 nohup /tmp/cloudflared tunnel --no-autoupdate --url http://localhost:6080 > /tmp/cf.log 2>&1 &
 for i in $(seq 1 60); do URL=$(grep -Eo 'https://[a-z0-9-]+\.trycloudflare\.com' /tmp/cf.log | head -1); [ -n "$URL" ] && break; sleep 2; done
 publish running
-echo "Live Mac link: ${URL}/vnc.html?autoconnect=1&resize=scale  (screen sharing: $VNC, page: $WEB)"
+echo "Live Mac link: ${URL}/vnc.html?autoconnect=1&resize=scale  (username: $U, screen sharing: $VNC, page: $WEB)"
 sleep $(( MIN * 60 ))
 publish ended
 exit 0
