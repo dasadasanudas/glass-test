@@ -1,0 +1,29 @@
+# Live Mac: Actions > live-mac > Run workflow, choose the minutes. The link and username appear in the
+# job log and in s/status.txt on the live-status branch. Password: the LIVE_MAC_PASSWORD secret.
+# Cancel the run to stop the Mac.
+name: live-mac
+on:
+  workflow_dispatch:
+    inputs:
+      minutes:
+        description: 'Minutes to keep the Mac on (max 340)'
+        required: false
+        default: '60'
+permissions:
+  contents: write
+concurrency:
+  group: live-mac
+  cancel-in-progress: true
+jobs:
+  mac:
+    runs-on: macos-26
+    timeout-minutes: 350
+    steps:
+      - uses: actions/checkout@v4
+      - name: Live Mac (link is in the job log and the live-status branch)
+        run: bash live/start.sh
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          LIVE_PASSWORD: ${{ secrets.LIVE_MAC_PASSWORD }}
+          MINUTES: ${{ github.event.inputs.minutes }}
