@@ -1,1 +1,1 @@
-probe:move,detach,clone full
+run 7: public styles (patch7.py)
