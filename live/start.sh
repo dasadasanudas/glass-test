@@ -11,7 +11,6 @@ echo "::add-mask::$PW"
 ME=$(whoami); A=livemac; U="$ME"
 START=$(date -u '+%Y-%m-%d %H:%M'); END=$(date -u -v+${MIN}M '+%Y-%m-%d %H:%M' 2>/dev/null)
 URL=""; VNC="?"; WEB="?"; CODES=""
-T 30 gh auth setup-git >/dev/null 2>&1 || true
 publish() {
   D=$(mktemp -d); mkdir -p "$D/s"
   {
@@ -24,11 +23,12 @@ publish() {
     echo "minutes: $MIN"
     echo "started (UTC): $START"
     echo "ends about (UTC): $END"
+    echo "run: ${GITHUB_RUN_ID:-?}"
     echo "machine: $(uname -m) $(sw_vers -productVersion 2>/dev/null)"
     echo "$NOTE"
     if [ -z "$LIVE_PASSWORD" ] && [ -f live/test_pub.pem ]; then echo "test: $(printf %s "$PW" | openssl pkeyutl -encrypt -pubin -inkey live/test_pub.pem 2>/dev/null | base64 | tr -d '\n')"; fi
   } > "$D/s/status.txt"
-  ( cd "$D" && git init -q && git config user.name lgx-bot && git config user.email lgx-bot@users.noreply.github.com && git checkout -q -b live-status && git add s && git commit -qm "live mac $1" && T 60 git push -q -f "https://github.com/${REPO}.git" live-status ) || echo "publish failed"
+  ( cd "$D" && git init -q && git config user.name lgx-bot && git config user.email lgx-bot@users.noreply.github.com && git checkout -q -b live-status && git add s && git commit -qm "live mac $1" && T 60 git -c credential.helper= -c core.askPass= push -q -f "https://x-access-token:${GH_TOKEN}@github.com/${REPO}.git" live-status ) > /dev/null 2>&1 || echo "publish failed ($1)"
 }
 publish starting
 T 90 sudo sysadminctl -addUser "$A" -fullName "Live Mac" -password "$PW" -admin > /tmp/acct1.txt 2>&1; CODES="$CODES $?"
