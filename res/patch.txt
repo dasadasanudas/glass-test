@@ -1,0 +1,13 @@
+ok static volatile int gOn = 0;
+ok m = full ? MIN(n, (NSUInteger)1024) : MIN(n, (NSUI
+ok static void logDraw(id enc, NSString *what) {
+ok   int d = gDraw++;   NSMutableString *m = 
+ok   if (glass) {     for (NSNumber *k in [s->ft allK
+ok   readTex(tex, [tag stringByAppendingString:@"_out
+ok static void renderFrame(CALayer *root
+ok     ((Fv_oh)o)(self, s, f, [[w copy] autorelease])
+ok static BOOL scene(NSString *tag, CGImageRef bg,
+ok   walk(gl, @"g", 0); 
+ok   hookDevice(object_getClass(gDev)); 
+ok main block
+patch result: OK 12

@@ -1,0 +1,17 @@
+lgx/capture.m:351:87: warning: implicit conversion from enumeration type 'enum CGImageAlphaInfo' to different enumeration type 'CGBitmapInfo' (aka 'enum CGBitmapInfo') [-Wimplicit-enum-enum-cast]
+  351 |   CGContextRef ctx = CGBitmapContextCreate((void *)rgba, w, h, 8, w * 4, cs, premul ? kCGImageAlphaPremultipliedLast : kCGImageAlphaNoneSkipLast);
+      |                      ~~~~~~~~~~~~~~~~~~~~~                                            ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+lgx/capture.m:351:120: warning: implicit conversion from enumeration type 'enum CGImageAlphaInfo' to different enumeration type 'CGBitmapInfo' (aka 'enum CGBitmapInfo') [-Wimplicit-enum-enum-cast]
+  351 |   CGContextRef ctx = CGBitmapContextCreate((void *)rgba, w, h, 8, w * 4, cs, premul ? kCGImageAlphaPremultipliedLast : kCGImageAlphaNoneSkipLast);
+      |                      ~~~~~~~~~~~~~~~~~~~~~                                                                             ^~~~~~~~~~~~~~~~~~~~~~~~~
+lgx/capture.m:426:68: warning: implicit conversion from enumeration type 'enum CGImageAlphaInfo' to different enumeration type 'CGBitmapInfo' (aka 'enum CGBitmapInfo') [-Wimplicit-enum-enum-cast]
+  426 |   CGContextRef c = CGBitmapContextCreate(NULL, W, H, 8, W * 4, cs, kCGImageAlphaPremultipliedLast);
+      |                    ~~~~~~~~~~~~~~~~~~~~~                           ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+lgx/capture.m:457:85: warning: implicit conversion from enumeration type 'enum CGImageAlphaInfo' to different enumeration type 'CGBitmapInfo' (aka 'enum CGBitmapInfo') [-Wimplicit-enum-enum-cast]
+  457 |   CGContextRef c = CGBitmapContextCreate(NULL, screenW, stripH, 8, screenW * 4, cs, kCGImageAlphaPremultipliedLast);
+      |                    ~~~~~~~~~~~~~~~~~~~~~                                            ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+lgx/capture.m:470:71: warning: implicit conversion from enumeration type 'enum CGImageAlphaInfo' to different enumeration type 'CGBitmapInfo' (aka 'enum CGBitmapInfo') [-Wimplicit-enum-enum-cast]
+  470 |   CGContextRef c = CGBitmapContextCreate(NULL, rw, rh, 8, rw * 4, cs, kCGImageAlphaPremultipliedLast);
+      |                    ~~~~~~~~~~~~~~~~~~~~~                              ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+5 warnings generated.
+clang exit 0

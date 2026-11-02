@@ -1,0 +1,50 @@
+strategy=move
+lgx/capture.m:351:87: warning: implicit conversion from enumeration type 'enum CGImageAlphaInfo' to different enumeration type 'CGBitmapInfo' (aka 'enum CGBitmapInfo') [-Wimplicit-enum-enum-cast]
+  351 |   CGContextRef ctx = CGBitmapContextCreate((void *)rgba, w, h, 8, w * 4, cs, premul ? kCGImageAlphaPremultipliedLast : kCGImageAlphaNoneSkipLast);
+      |                      ~~~~~~~~~~~~~~~~~~~~~                                            ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+lgx/capture.m:351:120: warning: implicit conversion from enumeration type 'enum CGImageAlphaInfo' to different enumeration type 'CGBitmapInfo' (aka 'enum CGBitmapInfo') [-Wimplicit-enum-enum-cast]
+  351 |   CGContextRef ctx = CGBitmapContextCreate((void *)rgba, w, h, 8, w * 4, cs, premul ? kCGImageAlphaPremultipliedLast : kCGImageAlphaNoneSkipLast);
+      |                      ~~~~~~~~~~~~~~~~~~~~~                                                                             ^~~~~~~~~~~~~~~~~~~~~~~~~
+lgx/capture.m:426:68: warning: implicit conversion from enumeration type 'enum CGImageAlphaInfo' to different enumeration type 'CGBitmapInfo' (aka 'enum CGBitmapInfo') [-Wimplicit-enum-enum-cast]
+  426 |   CGContextRef c = CGBitmapContextCreate(NULL, W, H, 8, W * 4, cs, kCGImageAlphaPremultipliedLast);
+      |                    ~~~~~~~~~~~~~~~~~~~~~                           ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+lgx/capture.m:457:85: warning: implicit conversion from enumeration type 'enum CGImageAlphaInfo' to different enumeration type 'CGBitmapInfo' (aka 'enum CGBitmapInfo') [-Wimplicit-enum-enum-cast]
+  457 |   CGContextRef c = CGBitmapContextCreate(NULL, screenW, stripH, 8, screenW * 4, cs, kCGImageAlphaPremultipliedLast);
+      |                    ~~~~~~~~~~~~~~~~~~~~~                                            ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+lgx/capture.m:470:71: warning: implicit conversion from enumeration type 'enum CGImageAlphaInfo' to different enumeration type 'CGBitmapInfo' (aka 'enum CGBitmapInfo') [-Wimplicit-enum-enum-cast]
+  470 |   CGContextRef c = CGBitmapContextCreate(NULL, rw, rh, 8, rw * 4, cs, kCGImageAlphaPremultipliedLast);
+      |                    ~~~~~~~~~~~~~~~~~~~~~                              ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+5 warnings generated.
+clang exit 0
+== /Users/runner/work/_temp/lgx-cap/full
+exit 0
+draws: 120  frames: 10  scenes: 10
+DEVICE Apple Paravirtual device class=AppleParavirtDevice lowPower=0 unified=1
+FCVCLASS MTLFunctionConstantValuesInternal super=MTLFunctionConstantValues
+STYLE pub0_64x64 style=0 variant=1
+STYLE pub0_164x164 style=0 variant=1
+STYLE pub0_600x72 style=0 variant=1
+STYLE pub0_600x260 style=0 variant=1
+STYLE pub1_64x64 style=1 variant=2
+STYLE pub1_164x164 style=1 variant=2
+STYLE pub1_600x72 style=1 variant=2
+STYLE pub1_600x260 style=1 variant=2
+APPEARANCE dark
+STYLE pubd1_600x72 style=1 variant=2
+STYLE pubd0_600x72 style=0 variant=1
+APPEARANCE light
+DONE
+3379
+SCENE pub1_600x260 variant=-1 multi=1 readback=2 pts=700x440 scale=1 appearance=NSAppearanceNameAqua
+SCENE pubd1_600x72 variant=-1 multi=1 readback=2 pts=700x200 scale=1 appearance=NSAppearanceNameDarkAqua
+SCENE pubd0_600x72 variant=-1 multi=1 readback=1 pts=700x200 scale=1 appearance=NSAppearanceNameDarkAqua
+4.0K	/Users/runner/work/_temp/lgx-cap/compile.txt
+2.4M	/Users/runner/work/_temp/lgx-cap/full
+4.0K	/Users/runner/work/_temp/lgx-cap/patch.txt
+4.0K	/Users/runner/work/_temp/lgx-cap/strategy.txt
+4.0K	/Users/runner/work/_temp/lgx-cap/summary.txt
+4.0K	/Users/runner/work/_temp/lgx-cap/system.txt
+ 24K	/Users/runner/work/_temp/lgx-cap/full/img
+2.0M	/Users/runner/work/_temp/lgx-cap/full/log.txt
+4.0K	/Users/runner/work/_temp/lgx-cap/full/stdout.txt
+412K	/Users/runner/work/_temp/lgx-cap/full/tex
