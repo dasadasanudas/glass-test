@@ -8,7 +8,7 @@ MIN=$(( MIN > 340 ? 340 : MIN ))
 if [ -n "$LIVE_PASSWORD" ]; then PW="$LIVE_PASSWORD"; NOTE="password: your LIVE_MAC_PASSWORD secret"
 else PW=$(openssl rand -hex 4); NOTE="no LIVE_MAC_PASSWORD secret set: a random password was used (only the test key can read it)"; fi
 echo "::add-mask::$PW"
-U=$(whoami)
+U=livemac
 START=$(date -u '+%Y-%m-%d %H:%M'); END=$(date -u -v+${MIN}M '+%Y-%m-%d %H:%M' 2>/dev/null)
 URL=""; VNC="?"; WEB="?"; CODES=""
 T 30 gh auth setup-git >/dev/null 2>&1 || true
@@ -31,14 +31,16 @@ publish() {
   ( cd "$D" && git init -q && git config user.name lgx-bot && git config user.email lgx-bot@users.noreply.github.com && git checkout -q -b live-status && git add s && git commit -qm "live mac $1" && T 60 git push -q -f "https://github.com/${REPO}.git" live-status ) || echo "publish failed"
 }
 publish starting
-T 30 sudo dscl . -passwd "/Users/$U" "$PW" > /tmp/acct.txt 2>&1; CODES="$CODES $?"
+T 90 sudo sysadminctl -addUser "$U" -fullName "Live Mac" -password "$PW" -admin > /tmp/acct.txt 2>&1; CODES="$CODES $?"
 K=/System/Library/CoreServices/RemoteManagement/ARDAgent.app/Contents/Resources/kickstart
 T 60 sudo "$K" -configure -allowAccessFor -allUsers -privs -all > /tmp/share1.txt 2>&1; CODES="$CODES $?"
 T 60 sudo "$K" -configure -clientopts -setvnclegacy -vnclegacy yes -setvncpw -vncpw "${PW:0:8}" > /tmp/share2.txt 2>&1; CODES="$CODES $?"
+T 20 sudo defaults write /Library/Preferences/com.apple.RemoteManagement VNCLegacyConnectionsEnabled -bool true > /tmp/share2b.txt 2>&1; CODES="$CODES $?"
 T 60 sudo "$K" -restart -agent -console > /tmp/share3.txt 2>&1; CODES="$CODES $?"
 T 60 sudo "$K" -activate > /tmp/share4.txt 2>&1; CODES="$CODES $?"
 T 20 sudo launchctl enable system/com.apple.screensharing > /tmp/share5.txt 2>&1; CODES="$CODES $?"
 T 20 sudo launchctl bootstrap system /System/Library/LaunchDaemons/com.apple.screensharing.plist > /tmp/share6.txt 2>&1; CODES="$CODES $?"
+T 20 sudo launchctl kickstart -k system/com.apple.screensharing > /tmp/share7.txt 2>&1; CODES="$CODES $?"
 sleep 3
 VNC=$(T 5 nc -z localhost 5900 >/dev/null 2>&1 && echo up || echo down)
 publish "screen sharing step done"
