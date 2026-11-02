@@ -1,0 +1,57 @@
+strategy=move
+lgx/capture.m:351:87: warning: implicit conversion from enumeration type 'enum CGImageAlphaInfo' to different enumeration type 'CGBitmapInfo' (aka 'enum CGBitmapInfo') [-Wimplicit-enum-enum-cast]
+  351 |   CGContextRef ctx = CGBitmapContextCreate((void *)rgba, w, h, 8, w * 4, cs, premul ? kCGImageAlphaPremultipliedLast : kCGImageAlphaNoneSkipLast);
+      |                      ~~~~~~~~~~~~~~~~~~~~~                                            ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+lgx/capture.m:351:120: warning: implicit conversion from enumeration type 'enum CGImageAlphaInfo' to different enumeration type 'CGBitmapInfo' (aka 'enum CGBitmapInfo') [-Wimplicit-enum-enum-cast]
+  351 |   CGContextRef ctx = CGBitmapContextCreate((void *)rgba, w, h, 8, w * 4, cs, premul ? kCGImageAlphaPremultipliedLast : kCGImageAlphaNoneSkipLast);
+      |                      ~~~~~~~~~~~~~~~~~~~~~                                                                             ^~~~~~~~~~~~~~~~~~~~~~~~~
+lgx/capture.m:426:68: warning: implicit conversion from enumeration type 'enum CGImageAlphaInfo' to different enumeration type 'CGBitmapInfo' (aka 'enum CGBitmapInfo') [-Wimplicit-enum-enum-cast]
+  426 |   CGContextRef c = CGBitmapContextCreate(NULL, W, H, 8, W * 4, cs, kCGImageAlphaPremultipliedLast);
+      |                    ~~~~~~~~~~~~~~~~~~~~~                           ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+lgx/capture.m:457:85: warning: implicit conversion from enumeration type 'enum CGImageAlphaInfo' to different enumeration type 'CGBitmapInfo' (aka 'enum CGBitmapInfo') [-Wimplicit-enum-enum-cast]
+  457 |   CGContextRef c = CGBitmapContextCreate(NULL, screenW, stripH, 8, screenW * 4, cs, kCGImageAlphaPremultipliedLast);
+      |                    ~~~~~~~~~~~~~~~~~~~~~                                            ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+lgx/capture.m:470:71: warning: implicit conversion from enumeration type 'enum CGImageAlphaInfo' to different enumeration type 'CGBitmapInfo' (aka 'enum CGBitmapInfo') [-Wimplicit-enum-enum-cast]
+  470 |   CGContextRef c = CGBitmapContextCreate(NULL, rw, rh, 8, rw * 4, cs, kCGImageAlphaPremultipliedLast);
+      |                    ~~~~~~~~~~~~~~~~~~~~~                              ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+5 warnings generated.
+clang exit 0
+== /Users/runner/work/_temp/lgx-cap/full
+exit 0
+draws: 631  frames: 54  scenes: 54
+DEVICE Apple Paravirtual device class=AppleParavirtDevice lowPower=0 unified=1
+FCVCLASS MTLFunctionConstantValuesInternal super=MTLFunctionConstantValues
+NOISE p1_v11 d7 FT4 T0xa298a3700[256x1 f115 m1 ty2 st0 u1 fbo0 lbl=com.apple.coreanimation.ImageClientStorage]
+BUFDUMP p1_v11 d8 FB7 com.apple.coreanimation.gamma-lut off0 len131072
+BUFDUMP p1_v11 d8 FB8 com.apple.coreanimation.asg77-weights off0 len6144
+NOISE p1_v11 d8 FT13 T0xa298a3c00[1x1 f80 m1 ty7 st1 u1 fbo0 lbl=com.apple.coreanimation.placeholder-cube]
+NOISE p1_v11 d8 FT11 T0xa298a3980[1x1 f80 m1 ty2 st1 u1 fbo0 lbl=com.apple.coreanimation.placeholder-texture]
+NOISE p1_v11 d8 FT9 T0xa29be4000[32x32 f80 m1 ty2 st1 u1 fbo0 lbl=com.apple.coreanimation.noise]
+READ skip p1_v11_d8_ft13_noise type7
+NOISE q64_v11 d5 FT13 T0xa29be5400[1x1 f80 m1 ty7 st1 u1 fbo0 lbl=com.apple.coreanimation.placeholder-cube]
+NOISE q64_v11 d5 FT11 T0xa29be5180[1x1 f80 m1 ty2 st1 u1 fbo0 lbl=com.apple.coreanimation.placeholder-texture]
+NOISE q64_v11 d5 FT9 T0xa29be5680[32x32 f80 m1 ty2 st1 u1 fbo0 lbl=com.apple.coreanimation.noise]
+NOISE q64_v11 d7 FT4 T0xa29be5900[256x1 f115 m1 ty2 st0 u1 fbo0 lbl=com.apple.coreanimation.ImageClientStorage]
+READ skip q64_v11_d5_ft13_noise type7
+APPEARANCE dark
+NOISE p1d_v11 d5 FT13 T0xa29be7c00[1x1 f80 m1 ty7 st1 u1 fbo0 lbl=com.apple.coreanimation.placeholder-cube]
+NOISE p1d_v11 d5 FT11 T0xa29be7980[1x1 f80 m1 ty2 st1 u1 fbo0 lbl=com.apple.coreanimation.placeholder-texture]
+NOISE p1d_v11 d5 FT9 T0xa298a3480[32x32 f80 m1 ty2 st1 u1 fbo0 lbl=com.apple.coreanimation.noise]
+NOISE p1d_v11 d7 FT4 T0xa2a2e4000[256x1 f115 m1 ty2 st0 u1 fbo0 lbl=com.apple.coreanimation.ImageClientStorage]
+READ skip p1d_v11_d5_ft13_noise type7
+APPEARANCE light
+DONE
+19748
+SCENE tall_h360_v3 variant=3 readback=3 radius=16 glass={{50, 40}, {600, 360}} pts=700x440 scale=1 strategy=move appearance=NSAppearanceNameAqua
+SCENE tall_w200_h300_v0 variant=0 readback=0 radius=16 glass={{250, 70}, {200, 300}} pts=700x440 scale=1 strategy=move appearance=NSAppearanceNameAqua
+SCENE tall_w300_h170_v0 variant=0 readback=0 radius=16 glass={{200, 135}, {300, 170}} pts=700x440 scale=1 strategy=move appearance=NSAppearanceNameAqua
+4.0K	/Users/runner/work/_temp/lgx-cap/compile.txt
+ 17M	/Users/runner/work/_temp/lgx-cap/full
+4.0K	/Users/runner/work/_temp/lgx-cap/patch.txt
+4.0K	/Users/runner/work/_temp/lgx-cap/strategy.txt
+8.0K	/Users/runner/work/_temp/lgx-cap/summary.txt
+4.0K	/Users/runner/work/_temp/lgx-cap/system.txt
+ 24K	/Users/runner/work/_temp/lgx-cap/full/img
+ 12M	/Users/runner/work/_temp/lgx-cap/full/log.txt
+4.0K	/Users/runner/work/_temp/lgx-cap/full/stdout.txt
+4.5M	/Users/runner/work/_temp/lgx-cap/full/tex
