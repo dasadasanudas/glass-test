@@ -1,9 +1,9 @@
 #!/bin/bash
-# LGX capture driver, run 5 (called by .github/workflows/lgx-capture.yml). No set -e on purpose.
+# LGX capture driver, run 6 (called by .github/workflows/lgx-capture.yml). No set -e on purpose.
 OUT="$RUNNER_TEMP/lgx-cap"; mkdir -p "$OUT"
 T() { perl -e 'alarm shift; exec @ARGV' "$@"; }
 defaults write com.apple.universalaccess reduceTransparency -bool false || true
-python3 lgx/patch5.py lgx/capture.m > "$OUT/patch.txt" 2>&1; cat "$OUT/patch.txt"
+python3 lgx/patch6.py lgx/capture.m > "$OUT/patch.txt" 2>&1; cat "$OUT/patch.txt"
 clang -fno-objc-arc -fobjc-exceptions -O1 -Wno-deprecated-declarations -Wno-objc-multiple-method-names \
   -framework AppKit -framework QuartzCore -framework Metal -framework AVFoundation -framework CoreMedia \
   -framework ImageIO -framework CoreGraphics lgx/capture.m -o "$RUNNER_TEMP/cap" > "$OUT/compile.txt" 2>&1
