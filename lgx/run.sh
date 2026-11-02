@@ -1,9 +1,9 @@
 #!/bin/bash
-# LGX capture driver, run 6 (called by .github/workflows/lgx-capture.yml). No set -e on purpose.
+# LGX capture driver, run 7 (called by .github/workflows/lgx-capture.yml). No set -e on purpose.
 OUT="$RUNNER_TEMP/lgx-cap"; mkdir -p "$OUT"
 T() { perl -e 'alarm shift; exec @ARGV' "$@"; }
 defaults write com.apple.universalaccess reduceTransparency -bool false || true
-python3 lgx/patch6.py lgx/capture.m > "$OUT/patch.txt" 2>&1; cat "$OUT/patch.txt"
+python3 lgx/patch7.py lgx/capture.m > "$OUT/patch.txt" 2>&1; cat "$OUT/patch.txt"
 clang -fno-objc-arc -fobjc-exceptions -O1 -Wno-deprecated-declarations -Wno-objc-multiple-method-names \
   -framework AppKit -framework QuartzCore -framework Metal -framework AVFoundation -framework CoreMedia \
   -framework ImageIO -framework CoreGraphics lgx/capture.m -o "$RUNNER_TEMP/cap" > "$OUT/compile.txt" 2>&1
@@ -25,7 +25,7 @@ fi
   for d in "$OUT/full"; do
     [ -d "$d" ] || continue; echo "== $d"; tail -3 "$d/stdout.txt" 2>/dev/null
     echo "draws: $(grep -c '^DRAW' "$d/log.txt" 2>/dev/null)  frames: $(grep -c '^FRAME .* end' "$d/log.txt" 2>/dev/null)  scenes: $(grep -c '^SCENE' "$d/log.txt" 2>/dev/null)"
-    grep -E '^(DEVICE|TAHOE|REGION|READ fail|READ skip|WATCHDOG|DONE|FCVCLASS|BUFDUMP|NOISE|APPEARANCE)' "$d/log.txt" 2>/dev/null | head -80
+    grep -E '^(DEVICE|TAHOE|REGION|READ fail|READ skip|WATCHDOG|DONE|FCVCLASS|BUFDUMP|NOISE|APPEARANCE|STYLE)' "$d/log.txt" 2>/dev/null | head -80
     grep -c '^FCV ' "$d/log.txt"
     grep '^SCENE' "$d/log.txt" | tail -3
   done
@@ -39,7 +39,7 @@ echo "$GITHUB_RUN_ID $(git rev-parse HEAD)" > "$R/res/run_id.txt"
 if [ -d "$OUT/full" ]; then ( cd "$OUT/full" && zip -qr -9 "$R/res/cap-full.zip" . ); ls -la "$R/res/cap-full.zip"; fi
 if [ -f "$R/res/cap-full.zip" ] && [ $(stat -f %z "$R/res/cap-full.zip") -gt 95000000 ]; then rm -f "$R/res/cap-full.zip"; ( cd "$OUT/full" && zip -qr -9 "$R/res/cap-full.zip" . -x 'tex/*_ft*.png' -x 'tex/*_L[1-9]_*' ); ls -la "$R/res/cap-full.zip"; fi
 gh auth setup-git >/dev/null 2>&1 || true
-( cd "$R" && git init -q && git config user.name lgx-bot && git config user.email lgx-bot@users.noreply.github.com && git checkout -q -b lgx-results && git add res && git commit -qm "lgx capture $GITHUB_RUN_ID" && git push -q -f "https://github.com/${REPO}.git" lgx-results ) || echo "publish failed"
+( cd "$R" && git init -q && git config user.name lgx-bot && git config user.email lgx-bot@users.noreply.github.com && git checkout -q -b lgx-results7 && git add res && git commit -qm "lgx capture $GITHUB_RUN_ID" && git push -q -f "https://github.com/${REPO}.git" lgx-results7 ) || echo "publish failed"
 gzip -9 -f "$OUT/full/log.txt" 2>/dev/null
 du -sh "$OUT" 2>/dev/null
 exit 0
