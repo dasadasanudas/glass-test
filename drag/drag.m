@@ -65,6 +65,17 @@ static void request(NSString *line) {
     if (i >= 500) L([@"  ack timeout for " stringByAppendingString:line]);
 }
 static void shoot(NSString *name) { L([@"SHOT " stringByAppendingString:name]); request([NSString stringWithFormat:@"SHOT %@ %ld", name, WNUM]); }
+static void shootR(NSString *name) { L([@"SHOTR " stringByAppendingString:name]); request([NSString stringWithFormat:@"SHOTR %@ %.0f,%.0f,%.0f,%.0f", name, NSMinX(WF), SH - NSMaxY(WF), NSWidth(WF), NSHeight(WF)]); }
+static void wins(NSString *tag) {
+    CFArrayRef a = CGWindowListCopyWindowInfo(kCGWindowListOptionOnScreenOnly, kCGNullWindowID);
+    NSMutableString *o = [NSMutableString stringWithFormat:@"WINDOWS %@\n", tag];
+    for (NSDictionary *w in (NSArray *)a) {
+        NSDictionary *b = w[(id)kCGWindowBounds];
+        [o appendFormat:@"  %@ owner=%@ pid=%@ layer=%@ alpha=%@ name=%@ b=%@,%@,%@,%@\n", w[(id)kCGWindowNumber], w[(id)kCGWindowOwnerName], w[(id)kCGWindowOwnerPID], w[(id)kCGWindowLayer], w[(id)kCGWindowAlpha], w[(id)kCGWindowName], b[@"X"], b[@"Y"], b[@"Width"], b[@"Height"]];
+    }
+    if (a) CFRelease(a);
+    L(o);
+}
 static CGPoint G(NSPoint p) { return CGPointMake(NSMinX(WF) + p.x, SH - (NSMinY(WF) + p.y)); }
 static void mouse(NSString *kind, NSPoint p) {
     CGPoint g = G(p);
@@ -136,20 +147,21 @@ static void dumpTree(NSString *tag, NSView *v) {
 static void burst(NSString *tag, NSPoint a);
 static void scene(NSString *tag, NSPoint a, NSPoint b, BOOL drag) {
     mouse(@"move", a); usleep(300000);
-    shoot([tag stringByAppendingString:@"_0_idle"]);
+    shoot([tag stringByAppendingString:@"_0_idle"]); shootR([tag stringByAppendingString:@"_R0_idle"]);
     mouse(@"down", a); usleep(100000);
-    shoot([tag stringByAppendingString:@"_1_down"]);
+    shoot([tag stringByAppendingString:@"_1_down"]); shootR([tag stringByAppendingString:@"_R1_down"]);
     usleep(500000);
     shoot([tag stringByAppendingString:@"_2_held"]);
     NSPoint end = a;
     if (drag) {
         for (int i = 1; i <= 8; i++) { double t = 0.5 * i / 8.0; mouse(@"drag", NSMakePoint(a.x + (b.x - a.x) * t, a.y + (b.y - a.y) * t)); usleep(15000); }
-        shoot([tag stringByAppendingString:@"_3_mid"]);
+        shoot([tag stringByAppendingString:@"_3_mid"]); shootR([tag stringByAppendingString:@"_R3_mid"]);
+        if ([tag hasSuffix:@"_slider"]) wins(tag);
         L([NSString stringWithFormat:@"  mid slider %.1f btn=%lu", [SL doubleValue], (unsigned long)[NSEvent pressedMouseButtons]]);
         if ([tag hasSuffix:@"_slider"] || [tag hasSuffix:@"switch_drag"]) dumpTree(tag, [tag hasSuffix:@"_slider"] ? (NSView *)SL : (NSView *)SW);
         for (int i = 1; i <= 8; i++) { double t = 0.5 + 0.5 * i / 8.0; mouse(@"drag", NSMakePoint(a.x + (b.x - a.x) * t, a.y + (b.y - a.y) * t)); usleep(15000); }
         usleep(450000);
-        shoot([tag stringByAppendingString:@"_4_endheld"]);
+        shoot([tag stringByAppendingString:@"_4_endheld"]); shootR([tag stringByAppendingString:@"_R4_endheld"]);
         end = b;
     }
     mouse(@"up", end); usleep(50000);
@@ -163,7 +175,7 @@ static void burst(NSString *tag, NSPoint a) {
     mouse(@"move", a); usleep(300000);
     mouse(@"down", a);
     for (int i = 0; i < 6; i++) { shoot([NSString stringWithFormat:@"%@_d%d", tag, i]); usleep(40000); }
-    for (int i = 1; i <= 12; i++) { mouse(@"drag", NSMakePoint(a.x + 10 * i, a.y)); if (i % 3 == 0) shoot([NSString stringWithFormat:@"%@_m%d", tag, i]); }
+    for (int i = 1; i <= 12; i++) { mouse(@"drag", NSMakePoint(a.x + 10 * i, a.y)); if (i % 3 == 0) { shoot([NSString stringWithFormat:@"%@_m%d", tag, i]); shootR([NSString stringWithFormat:@"%@_Rm%d", tag, i]); } }
     mouse(@"up", NSMakePoint(a.x + 120, a.y));
     for (int i = 0; i < 6; i++) { shoot([NSString stringWithFormat:@"%@_u%d", tag, i]); usleep(40000); }
     L([NSString stringWithFormat:@"VALUES %@ slider %.1f", tag, [SL doubleValue]]);
