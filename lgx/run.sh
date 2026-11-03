@@ -1,5 +1,11 @@
 #!/bin/bash
 # Capture driver (run-7 scenes). Edit patch file / scene list, then push under lgx/ to run a capture.
+# A commit whose subject starts with [drag] runs drag/run.sh instead (results on the drag-results branch).
+if git log -1 --format=%s | grep -q '^\[drag\]'; then
+  bash drag/run.sh
+  mkdir -p "$RUNNER_TEMP/lgx-cap"; cp -R "$RUNNER_TEMP/drag/." "$RUNNER_TEMP/lgx-cap/" 2>/dev/null
+  exit 0
+fi
 OUT="$RUNNER_TEMP/lgx-cap"; mkdir -p "$OUT"
 T() { perl -e 'alarm shift; exec @ARGV' "$@"; }
 defaults write com.apple.universalaccess reduceTransparency -bool false || true
