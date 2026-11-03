@@ -29,6 +29,7 @@ while [ $t -lt 17000 ]; do
     read CMD A B C < "$OUT/req.txt"
     case "$CMD" in
       SHOT) screencapture -x -o -l "$B" "$OUT/shots/$A.png" 2>> "$OUT/shot_err.txt"; n=$((n+1)) ;;
+      SHOTR) screencapture -x -R "$B" "$OUT/shots/$A.png" 2>> "$OUT/shot_err.txt"; n=$((n+1)) ;;
       MOUSE) "$RUNNER_TEMP/mouse" "$A" "$B" "$C" >> "$OUT/mouse_log.txt" 2>&1; m=$((m+1)) ;;
     esac
     rm -f "$OUT/req.txt"; touch "$OUT/ack.txt"
