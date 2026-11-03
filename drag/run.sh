@@ -1,6 +1,7 @@
 #!/bin/bash
 # Drag-state capture driver. Push a change under drag/ to run it; results go to the drag-results branch.
 # A trigger commit whose subject contains "accent" runs the accent probe instead (one launch per AppleAccentColor).
+# A subject containing "sysref" first runs drag/sysref.sh (system UI with transparency and motion on, results/sysref.zip).
 if git log -1 --format=%s | grep -q 'accent'; then
   OUT="$RUNNER_TEMP/drag"; mkdir -p "$OUT/shots"; sw_vers > "$OUT/os.txt"
   APP="$RUNNER_TEMP/AccentRef.app"; mkdir -p "$APP/Contents/MacOS"
@@ -32,7 +33,10 @@ if git log -1 --format=%s | grep -q 'accent'; then
 fi
 OUT="$RUNNER_TEMP/drag"; mkdir -p "$OUT/shots"
 sw_vers > "$OUT/os.txt"
+if git log -1 --format=%s | grep -q 'sysref'; then bash drag/sysref.sh; fi
 defaults write com.apple.universalaccess reduceTransparency -bool false || true
+defaults write com.apple.universalaccess reduceMotion -bool false || true
+osascript -l JavaScript -e 'ObjC.import("AppKit"); var w = $.NSWorkspace.sharedWorkspace; "RT=" + w.accessibilityDisplayShouldReduceTransparency + " RM=" + w.accessibilityDisplayShouldReduceMotion' > "$OUT/a11y.txt" 2>&1
 clang -O1 -framework ApplicationServices drag/mouse.c -o "$RUNNER_TEMP/mouse" > "$OUT/compile.txt" 2>&1; echo "mouse clang exit $?" >> "$OUT/compile.txt"
 APP="$RUNNER_TEMP/DragRef.app"; mkdir -p "$APP/Contents/MacOS"
 cat > "$APP/Contents/Info.plist" <<'PLIST_EOF'
@@ -72,7 +76,8 @@ screencapture -x "$OUT/final_screen.png"
 echo "shots $n mouse $m loops $t" > "$OUT/summary.txt"; cat "$OUT/summary.txt"; head -40 "$OUT/log.txt"
 R="$RUNNER_TEMP/res"; mkdir -p "$R/res"
 ( cd "$OUT" && zip -qr -9 "$R/res/drag-cap.zip" . )
-cp "$OUT/log.txt" "$OUT/compile.txt" "$OUT/summary.txt" "$OUT/mouse_log.txt" "$R/res/" 2>/dev/null
+cp "$OUT/log.txt" "$OUT/compile.txt" "$OUT/summary.txt" "$OUT/mouse_log.txt" "$OUT/a11y.txt" "$R/res/" 2>/dev/null
+cp "$RUNNER_TEMP/sysref.zip" "$R/res/" 2>/dev/null; cp "$RUNNER_TEMP/sys/log.txt" "$R/res/sys_log.txt" 2>/dev/null
 echo "$GITHUB_RUN_ID $(git rev-parse HEAD)" > "$R/res/run_id.txt"
 gh auth setup-git >/dev/null 2>&1 || true
 ( cd "$R" && git init -q && git config user.name lgx-bot && git config user.email lgx-bot@users.noreply.github.com && git checkout -q -b drag-results && git add res && git commit -qm "drag capture $GITHUB_RUN_ID" && git push -q -f "https://github.com/${REPO}.git" drag-results ) || echo "publish failed"
