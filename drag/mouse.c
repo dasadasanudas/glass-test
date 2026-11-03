@@ -11,6 +11,9 @@ int main(int c, char **v) {
     if (!strcmp(v[1], "down")) t = kCGEventLeftMouseDown; else if (!strcmp(v[1], "up")) t = kCGEventLeftMouseUp; else if (!strcmp(v[1], "drag")) t = kCGEventLeftMouseDragged;
     CGEventRef e = CGEventCreateMouseEvent(NULL, t, p, kCGMouseButtonLeft);
     if (!e) { printf("no event\n"); return 2; }
+    if (t != kCGEventMouseMoved) CGEventSetIntegerValueField(e, kCGMouseEventClickState, 1);
+    if (t == kCGEventLeftMouseDown || t == kCGEventLeftMouseDragged) CGEventSetDoubleValueField(e, kCGMouseEventPressure, 1.0);
     CGEventPost(kCGHIDEventTap, e); CFRelease(e);
+    printf("%s %.1f %.1f\n", v[1], p.x, p.y);
     return 0;
 }
