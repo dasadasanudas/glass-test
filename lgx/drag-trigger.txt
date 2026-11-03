@@ -1,1 +1,1 @@
-drag capture trigger 3
+drag capture trigger 4 accent
