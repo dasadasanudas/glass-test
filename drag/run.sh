@@ -2,6 +2,8 @@
 # Drag-state capture driver. Push a change under drag/ to run it; results go to the drag-results branch.
 # A trigger commit whose subject contains "accent" runs the accent probe instead (one launch per AppleAccentColor).
 # A subject containing "sysref" first runs drag/sysref.sh (system UI with transparency and motion on, results/sysref.zip).
+# A subject containing "appref" runs only drag/appref.sh (app windows with real glass, results/appref.zip).
+if git log -1 --format=%s | grep -q 'appref'; then bash drag/appref.sh; exit 0; fi
 if git log -1 --format=%s | grep -q 'accent'; then
   OUT="$RUNNER_TEMP/drag"; mkdir -p "$OUT/shots"; sw_vers > "$OUT/os.txt"
   APP="$RUNNER_TEMP/AccentRef.app"; mkdir -p "$APP/Contents/MacOS"
