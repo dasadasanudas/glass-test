@@ -2,11 +2,11 @@
 # Live Mac: turns on Screen Sharing on this runner, serves it as a web page (noVNC) and opens a public
 # HTTPS link (Cloudflare quick tunnel). Progress and the link go to s/status.txt on the live-status branch
 # and the job log. Stop it by cancelling the run.
-# Login: the page should ask for a Password only: type the first 8 characters of LIVE_MAC_PASSWORD. That
-# is the screen password and shows runner's own logged-in desktop. (Username logins: runner's password
-# cannot be changed because the account has a secure token; livemac works but opens its own black session.)
-# Nov 4 run 4: noVNC follows the server's order and macOS offers Apple auth first, so it asked for a
-# username. noVNC is now patched to pick the plain VNC password when the Mac offers it.
+# Login: the page asks for a Password only: type the first 8 characters of LIVE_MAC_PASSWORD. That is the
+# screen password and shows runner's own logged-in desktop. (Username logins: runner's password cannot be
+# changed because the account has a secure token; livemac works but opens its own black session.)
+# Nov 4: noVNC is patched to pick the screen password (macOS lists Apple username login first), and
+# live/vnc_selftest.py does a real screen-password login on the Mac itself and measures the frame.
 T() { perl -e 'alarm shift; exec @ARGV' "$@"; }
 MIN="${MINUTES:-}"; [ -z "$MIN" ] && MIN=$(cat live/minutes.txt 2>/dev/null || echo 60)
 MIN=$(( MIN > 340 ? 340 : MIN ))
@@ -15,13 +15,14 @@ else PW=$(openssl rand -hex 4); NOTE="no LIVE_MAC_PASSWORD secret set: a random 
 echo "::add-mask::$PW"
 ME=$(whoami); A=livemac; U="$ME"
 START=$(date -u '+%Y-%m-%d %H:%M'); END=$(date -u -v+${MIN}M '+%Y-%m-%d %H:%M' 2>/dev/null)
-URL=""; VNC="?"; WEB="?"; CODES=""; CONSOLE="?"; SHOT="none"; PWCHK="?"; PWCHK2="?"; TOK="?"; VPW="?"; SECT="?"; PATCH="?"
+URL=""; VNC="?"; WEB="?"; CODES=""; CONSOLE="?"; SHOT="none"; PWCHK="?"; PWCHK2="?"; TOK="?"; VPW="?"; SECT="?"; PATCH="?"; VTEST="?"
 publish() {
   D=$(mktemp -d); mkdir -p "$D/s"
   {
     echo "state: $1"
     echo "link: ${URL:-none}/vnc.html?autoconnect=1&resize=scale"
     echo "login: Password only -> first 8 characters of your secret (runner's screen)"
+    echo "self-test (real screen-password login done on the Mac itself): $VTEST"
     echo "auth types the Mac offers (2 = screen password, 30 = Apple username login): $SECT"
     echo "noVNC prefers screen password: $PATCH"
     echo "password check $ME: $PWCHK"
@@ -87,6 +88,9 @@ VNC=$(T 5 nc -z localhost 5900 >/dev/null 2>&1 && echo up || echo down)
 SECT=$(T 10 python3 -c "import socket; s=socket.create_connection(('127.0.0.1',5900),5); v=s.recv(12); s.sendall(b'RFB 003.008\n'); n=s.recv(1)[0]; print(v.decode().strip(), list(s.recv(n)))" 2>&1 | tail -1)
 CONSOLE=$(stat -f %Su /dev/console 2>/dev/null)
 T 10 caffeinate -u -t 2 > /dev/null 2>&1
+# real login with the screen password, done locally, plus how much of the frame is not black
+sleep 2
+VTEST=$(T 45 python3 live/vnc_selftest.py "${PW:0:8}" 2>&1 | tail -1)
 T 20 screencapture -x /tmp/screen.png > /tmp/shot.txt 2>&1 && SHOT="taken $(stat -f %z /tmp/screen.png 2>/dev/null) bytes" || SHOT="failed"
 publish "screen sharing step done"
 T 90 git clone -q --depth 1 https://github.com/novnc/noVNC.git /tmp/novnc; CODES="$CODES $?"
@@ -105,7 +109,7 @@ tar -xzf /tmp/cf.tgz -C /tmp 2>/dev/null; CODES="$CODES $?"; chmod +x /tmp/cloud
 nohup /tmp/cloudflared tunnel --no-autoupdate --url http://localhost:6080 > /tmp/cf.log 2>&1 &
 for i in $(seq 1 60); do URL=$(grep -Eo 'https://[a-z0-9-]+\.trycloudflare\.com' /tmp/cf.log | head -1); [ -n "$URL" ] && break; sleep 2; done
 publish running
-echo "Live Mac link: ${URL}/vnc.html?autoconnect=1&resize=scale  (auth types: $SECT; noVNC patch: $PATCH; vnc file: $VPW)"
+echo "Live Mac link: ${URL}/vnc.html?autoconnect=1&resize=scale  (self-test: $VTEST; auth types: $SECT; noVNC patch: $PATCH)"
 # nudge the display every 5 minutes so it never idles to black
 E=$(( $(date +%s) + MIN * 60 )); while [ $(date +%s) -lt $E ]; do caffeinate -u -t 1 > /dev/null 2>&1; sleep 300; done
 publish ended
