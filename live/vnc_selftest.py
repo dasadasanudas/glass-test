@@ -1,8 +1,10 @@
-# Live Mac self-test: logs in to this Mac's own Screen Sharing with the VNC (screen) password, exactly like
-# the noVNC page does, watches ~8 s of frames, reports how much of each is not black, and saves the last
-# frame as /tmp/vnc.png. Usage: python3 live/vnc_selftest.py <password>  (one line out; never prints it)
+# Live Mac self-test: logs in to a VNC server on this Mac with the screen password, exactly like the noVNC
+# page does, watches ~8 s of frames, reports how much of each is not black, and saves the last frame.
+# Usage: python3 live/vnc_selftest.py <password> [port] [png]   (one line out; never prints the password)
 import socket, struct, subprocess, sys, time, zlib
 pw = sys.argv[1].encode()[:8].ljust(8, b'\0')
+PORT = int(sys.argv[2]) if len(sys.argv) > 2 else 5900
+OUT = sys.argv[3] if len(sys.argv) > 3 else '/tmp/vnc.png'
 key = bytes(int('{:08b}'.format(b)[::-1], 2) for b in pw)   # VNC uses DES with bit-reversed key bytes
 
 def rx(s, n):
@@ -44,7 +46,7 @@ def visible(fb):
     return 100.0 * n / max(1, tot)
 
 try:
-    s = socket.create_connection(('127.0.0.1', 5900), 10)
+    s = socket.create_connection(('127.0.0.1', PORT), 10)
     s.settimeout(10)
     rx(s, 12)
     s.sendall(b'RFB 003.008\n')
@@ -100,9 +102,10 @@ try:
             rx(s, struct.unpack('>I', rx(s, 4))[0])
         else:
             raise RuntimeError('unexpected message %d after %s' % (t, seen))
-    save_png('/tmp/vnc.png', w, h, fb)
-    print('auth: ok, screen %dx%d, %d updates (%d rects), visible %% per update: %s (frame saved as s/vnc.png)' % (w, h, len(seen), rects, ' '.join(seen[:12])))
+    save_png(OUT, w, h, fb)
+    last = float(seen[-1]) if seen and seen[-1] != 'timeout' else 0.0
+    print('auth: ok, screen %dx%d, %d updates, visible %% per update: %s | LAST=%.1f' % (w, h, len(seen), ' '.join(seen[:10]), last))
 except SystemExit:
     raise
 except Exception as e:
-    print('selftest error: %s' % e)
+    print('selftest error: %s | LAST=0' % e)

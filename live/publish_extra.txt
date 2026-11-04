@@ -1,1 +1,1 @@
-start.sh copies /tmp/vnc.png (the frame Screen Sharing actually sends) to s/vnc.png when it exists.
+start.sh publishes s/vnc.png (frame from Apple Screen Sharing, port 5900) and s/vnc5901.png (frame from macVNC, port 5901).

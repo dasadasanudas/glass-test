@@ -1,33 +1,34 @@
 #!/bin/bash
-# Live Mac: turns on Screen Sharing on this runner, serves it as a web page (noVNC) and opens a public
-# HTTPS link (Cloudflare quick tunnel). Progress and the link go to s/status.txt on the live-status branch
-# and the job log. Stop it by cancelling the run.
-# Login: the page asks for a Password only: type the first 8 characters of LIVE_MAC_PASSWORD. That is the
-# screen password and shows runner's own logged-in desktop. (Username logins: runner's password cannot be
-# changed because the account has a secure token; livemac works but opens its own black session.)
-# Nov 4 self-tests: screen-password login works (auth ok) but the frame was 100% black while screencapture
-# saw the desktop, so Screen Sharing lacked Screen Recording permission. It is now granted in TCC.
+# Live Mac: shares this runner's screen as a web page (noVNC) through a public HTTPS link (Cloudflare quick
+# tunnel). Progress and the link go to s/status.txt on the live-status branch and the job log. Stop it by
+# cancelling the run.
+# Login: the page asks for a Password only: type the first 8 characters of LIVE_MAC_PASSWORD.
+# Nov 4 findings: Apple Screen Sharing (port 5900) accepts the screen password but sends 100% black frames on
+# this VM, even with Screen Recording permission. screencapture sees the desktop fine, so macVNC (LibVNC's
+# macOS server, which captures like screencapture) is built and run on port 5901; the page uses whichever
+# server the on-Mac self-test (live/vnc_selftest.py) proves is not black.
 T() { perl -e 'alarm shift; exec @ARGV' "$@"; }
 MIN="${MINUTES:-}"; [ -z "$MIN" ] && MIN=$(cat live/minutes.txt 2>/dev/null || echo 60)
 MIN=$(( MIN > 340 ? 340 : MIN ))
 if [ -n "$LIVE_PASSWORD" ]; then PW="$LIVE_PASSWORD"; NOTE="password: your LIVE_MAC_PASSWORD secret"
 else PW=$(openssl rand -hex 4); NOTE="no LIVE_MAC_PASSWORD secret set: a random password was used (only the test key can read it)"; fi
 echo "::add-mask::$PW"
-ME=$(whoami); A=livemac; U="$ME"
+ME=$(whoami); A=livemac
 START=$(date -u '+%Y-%m-%d %H:%M'); END=$(date -u -v+${MIN}M '+%Y-%m-%d %H:%M' 2>/dev/null)
-URL=""; VNC="?"; WEB="?"; CODES=""; CONSOLE="?"; SHOT="none"; PWCHK="?"; PWCHK2="?"; TOK="?"; VPW="?"; SECT="?"; PATCH="?"; VTEST="?"; TCCR="?"
+URL=""; VNC="?"; WEB="?"; CODES=""; CONSOLE="?"; SHOT="none"; TOK="?"; VPW="?"; SECT="?"; PATCH="?"; VTEST="?"; VTEST2="not run"; TCCR="?"; MVB="?"; PORT=5900
 publish() {
   D=$(mktemp -d); mkdir -p "$D/s"
   {
     echo "state: $1"
     echo "link: ${URL:-none}/vnc.html?autoconnect=1&resize=scale"
-    echo "login: Password only -> first 8 characters of your secret (runner's screen)"
-    echo "self-test (real screen-password login done on the Mac itself): $VTEST"
-    echo "screen sharing permissions (TCC): $TCCR"
-    echo "auth types the Mac offers (2 = screen password, 30 = Apple username login): $SECT"
+    echo "login: Password only -> first 8 characters of your secret"
+    echo "page uses port: $PORT (5900 = Apple Screen Sharing, 5901 = macVNC)"
+    echo "self-test 5900 Apple Screen Sharing (real login on the Mac): $VTEST"
+    echo "self-test 5901 macVNC (real login on the Mac): $VTEST2"
+    echo "macVNC build: $MVB"
+    echo "permissions (TCC): $TCCR"
+    echo "auth types 5900 offers (2 = screen password, 30 = Apple username login): $SECT"
     echo "noVNC prefers screen password: $PATCH"
-    echo "password check $ME: $PWCHK"
-    echo "password check $A: $PWCHK2"
     echo "secure token $ME: $TOK"
     echo "screen (VNC) password file: $VPW"
     echo "screen sharing: $VNC"
@@ -43,10 +44,17 @@ publish() {
     echo "$NOTE"
     if [ -z "$LIVE_PASSWORD" ] && [ -f live/test_pub.pem ]; then echo "test: $(printf %s "$PW" | openssl pkeyutl -encrypt -pubin -inkey live/test_pub.pem 2>/dev/null | base64 | tr -d '\n')"; fi
   } > "$D/s/status.txt"
-  [ -f /tmp/screen.png ] && cp /tmp/screen.png "$D/s/screen.png"
+  for f in screen vnc vnc5901; do [ -f /tmp/$f.png ] && cp /tmp/$f.png "$D/s/$f.png"; done
+  [ -f /tmp/mvbuild_tail.txt ] && cp /tmp/mvbuild_tail.txt "$D/s/macvnc_build.txt"
   ( cd "$D" && git init -q && git config user.name lgx-bot && git config user.email lgx-bot@users.noreply.github.com && git checkout -q -b live-status && git add s && git commit -qm "live mac $1" && T 60 git -c credential.helper= -c core.askPass= push -q -f "https://x-access-token:${GH_TOKEN}@github.com/${REPO}.git" live-status ) > /dev/null 2>&1 || echo "publish failed ($1)"
 }
 publish starting
+# build macVNC in the background while the rest is set up
+( export HOMEBREW_NO_AUTO_UPDATE=1 HOMEBREW_NO_INSTALL_CLEANUP=1
+  { T 420 brew install libvncserver; which cmake >/dev/null || T 300 brew install cmake; } > /tmp/brew.txt 2>&1
+  T 120 git clone -q --depth 1 https://github.com/LibVNC/macVNC.git /tmp/macvnc > /tmp/mvclone.txt 2>&1
+  cd /tmp/macvnc && T 200 cmake -B build -DCMAKE_BUILD_TYPE=Release . > /tmp/mvcmake.txt 2>&1 && T 400 cmake --build build -j 4 > /tmp/mvbuild.txt 2>&1
+  echo $? > /tmp/mv_done ) &
 # keep the console display awake for the whole session
 T 20 sudo pmset -a displaysleep 0 sleep 0 disksleep 0 > /tmp/pm.txt 2>&1; CODES="$CODES $?"
 nohup caffeinate -dimsu -t $(( MIN * 60 + 900 )) > /dev/null 2>&1 &
@@ -54,24 +62,16 @@ T 10 caffeinate -u -t 3 > /dev/null 2>&1
 T 20 defaults -currentHost write com.apple.screensaver idleTime -int 0 > /tmp/ss1.txt 2>&1; CODES="$CODES $?"
 T 20 sudo defaults write /Library/Preferences/com.apple.screensaver loginWindowIdleTime -int 0 > /tmp/ss2.txt 2>&1; CODES="$CODES $?"
 T 20 sudo defaults write /Library/Preferences/com.apple.screensaver askForPassword -int 0 > /tmp/ss3.txt 2>&1; CODES="$CODES $?"
-# accounts
 TOK=$(T 20 sudo sysadminctl -secureTokenStatus "$ME" 2>&1 | grep -Eo 'ENABLED|DISABLED' | head -1)
 T 90 sudo sysadminctl -addUser "$A" -fullName "Live Mac" -password "$PW" -admin > /tmp/acct1.txt 2>&1; CODES="$CODES $?"
-T 30 sudo dscl . -passwd "/Users/$ME" "$PW" > /tmp/acct3.txt 2>&1; CODES="$CODES $?"
-chk() { T 20 dscl /Local/Default -authonly "$1" "$PW" > /tmp/chk_$1.txt 2>&1 && echo ok || echo "failed ($(head -c 100 /tmp/chk_$1.txt | tr '\n' ' '))"; }
-PWCHK=$(chk "$ME")
-if [ "${PWCHK%% *}" != "ok" ]; then
-  T 90 sudo sysadminctl -resetPasswordFor "$ME" -newPassword "$PW" -adminUser "$A" -adminPassword "$PW" > /tmp/acct2.txt 2>&1; CODES="$CODES $?"
-  PWCHK=$(chk "$ME")
-fi
-PWCHK2=$(chk "$A")
-# Screen Sharing needs Screen Recording + input permission (TCC); without it the shared frame is black
+# permissions (TCC): Screen Recording + input for Apple's Screen Sharing parts (SIP is off on these runners)
 SIP=$(csrutil status 2>/dev/null | head -1 | sed 's/.*: //')
 DB="/Library/Application Support/com.apple.TCC/TCC.db"
 TCCN=0; TCCE=""
 addtcc() { sudo sqlite3 "$DB" "INSERT OR REPLACE INTO access (service, client, client_type, auth_value, auth_reason, auth_version, indirect_object_identifier, flags, last_modified) VALUES ('$1', '$2', $3, 2, 4, 1, 'UNUSED', 0, $(date +%s));" > /tmp/tcc_err.txt 2>&1 && TCCN=$((TCCN+1)) || TCCE="$(head -c 90 /tmp/tcc_err.txt | tr '\n' ' ')"; }
+SVCS="kTCCServiceScreenCapture kTCCServicePostEvent kTCCServiceAccessibility kTCCServiceListenEvent"
 RM=/System/Library/CoreServices/RemoteManagement
-for SV in kTCCServiceScreenCapture kTCCServicePostEvent kTCCServiceAccessibility kTCCServiceListenEvent; do
+for SV in $SVCS; do
   for B in "$RM"/*.bundle "$RM"/*.app; do
     [ -d "$B" ] || continue
     ID=$(defaults read "$B/Contents/Info" CFBundleIdentifier 2>/dev/null); [ -n "$ID" ] && addtcc "$SV" "$ID" 0
@@ -80,15 +80,14 @@ for SV in kTCCServiceScreenCapture kTCCServicePostEvent kTCCServiceAccessibility
 done
 sudo killall tccd > /dev/null 2>&1
 TCCR="SIP $SIP; rows added $TCCN${TCCE:+; error: $TCCE}"
-# screen sharing access: access group plus all users allowed
+# Apple Screen Sharing on 5900 with the screen password
 T 20 sudo dseditgroup -o create -q com.apple.access_screensharing > /tmp/grp0.txt 2>&1; CODES="$CODES $?"
 T 20 sudo dseditgroup -o edit -a "$ME" -t user com.apple.access_screensharing > /tmp/grp1.txt 2>&1; CODES="$CODES $?"
 T 20 sudo dseditgroup -o edit -a "$A" -t user com.apple.access_screensharing > /tmp/grp2.txt 2>&1; CODES="$CODES $?"
-K=/System/Library/CoreServices/RemoteManagement/ARDAgent.app/Contents/Resources/kickstart
+K=$RM/ARDAgent.app/Contents/Resources/kickstart
 T 60 sudo "$K" -configure -allowAccessFor -allUsers -privs -all > /tmp/share0.txt 2>&1; CODES="$CODES $?"
 T 60 sudo "$K" -configure -access -on -users "$ME,$A" -privs -all > /tmp/share1.txt 2>&1; CODES="$CODES $?"
 T 60 sudo "$K" -configure -clientopts -setvnclegacy -vnclegacy yes -setvncpw -vncpw "${PW:0:8}" > /tmp/share2.txt 2>&1; CODES="$CODES $?"
-# legacy VNC (screen) password written directly, in Apple's obfuscated format (first 8 characters)
 printf %s "${PW:0:8}" | perl -we 'BEGIN { @k = unpack "C*", pack "H*", "1734516E8BA8C5E2FF1C39567390ADCA" } $_ = <STDIN>; $_ = "" unless defined; @p = unpack "C*", $_; foreach (@k) { printf "%02X", $_ ^ (shift @p || 0) } print "\n"' | sudo tee /Library/Preferences/com.apple.VNCSettings.txt > /dev/null 2>/tmp/vpw.txt; R=$?; CODES="$CODES $R"
 T 10 sudo chmod 600 /Library/Preferences/com.apple.VNCSettings.txt > /dev/null 2>&1
 [ "$R" = "0" ] && VPW="written ($(sudo wc -c /Library/Preferences/com.apple.VNCSettings.txt 2>/dev/null | awk '{print $1}') bytes)" || VPW="failed"
@@ -101,22 +100,37 @@ T 20 sudo launchctl bootstrap system /System/Library/LaunchDaemons/com.apple.scr
 T 20 sudo launchctl kickstart -k system/com.apple.screensharing > /tmp/share7.txt 2>&1; CODES="$CODES $?"
 sleep 3
 VNC=$(T 5 nc -z localhost 5900 >/dev/null 2>&1 && echo up || echo down)
-# which logins does the Mac offer? (RFB handshake: version, then the list of security types)
 SECT=$(T 10 python3 -c "import socket; s=socket.create_connection(('127.0.0.1',5900),5); v=s.recv(12); s.sendall(b'RFB 003.008\n'); n=s.recv(1)[0]; print(v.decode().strip(), list(s.recv(n)))" 2>&1 | tail -1)
 CONSOLE=$(stat -f %Su /dev/console 2>/dev/null)
 T 10 caffeinate -u -t 2 > /dev/null 2>&1
-# real login with the screen password, done locally, plus how much of the frame is not black
 sleep 2
-VTEST=$(T 45 python3 live/vnc_selftest.py "${PW:0:8}" 2>&1 | tail -1)
+VTEST=$(T 45 python3 live/vnc_selftest.py "${PW:0:8}" 5900 /tmp/vnc.png 2>&1 | tail -1)
 T 20 screencapture -x /tmp/screen.png > /tmp/shot.txt 2>&1 && SHOT="taken $(stat -f %z /tmp/screen.png 2>/dev/null) bytes" || SHOT="failed"
 publish "screen sharing step done"
+# macVNC on 5901 (wait for the background build, max ~9 min)
+for i in $(seq 1 108); do [ -f /tmp/mv_done ] && break; sleep 5; done
+MV=$(find /tmp/macvnc/build -type f -perm +111 -name macVNC 2>/dev/null | head -1)
+{ tail -5 /tmp/brew.txt; tail -3 /tmp/mvcmake.txt; tail -8 /tmp/mvbuild.txt; } > /tmp/mvbuild_tail.txt 2>/dev/null
+if [ -n "$MV" ]; then
+  MVB="built ($MV)"
+  for SV in $SVCS; do addtcc "$SV" "$MV" 1; addtcc "$SV" /bin/bash 1; done
+  sudo killall tccd > /dev/null 2>&1; sleep 1
+  ( cd /tmp && nohup "$MV" -rfbport 5901 -passwd "${PW:0:8}" > /tmp/macvnc.log 2>&1 & )
+  sleep 6
+  VTEST2=$(T 45 python3 live/vnc_selftest.py "${PW:0:8}" 5901 /tmp/vnc5901.png 2>&1 | tail -1)
+  L1=$(echo "$VTEST" | sed -n 's/.*LAST=\([0-9.]*\).*/\1/p'); L2=$(echo "$VTEST2" | sed -n 's/.*LAST=\([0-9.]*\).*/\1/p')
+  if awk "BEGIN{exit !(${L2:-0} > 1 && ${L2:-0} > ${L1:-0})}"; then PORT=5901; fi
+else
+  MVB="failed (exit $(cat /tmp/mv_done 2>/dev/null || echo timeout); see s/macvnc_build.txt)"
+fi
+TCCR="SIP $SIP; rows added $TCCN${TCCE:+; error: $TCCE}"
+publish "servers checked"
 T 90 git clone -q --depth 1 https://github.com/novnc/noVNC.git /tmp/novnc; CODES="$CODES $?"
 T 90 git clone -q --depth 1 https://github.com/novnc/websockify.git /tmp/novnc/utils/websockify; CODES="$CODES $?"
-# noVNC takes the first type in the Mac's own order (Apple username login); make it take the screen password
 RF=/tmp/novnc/core/rfb.js
 sed -i '' 's/for (let type of types) {/if (types.includes(2) \&\& this._isSupportedSecurityType(2)) { this._rfbAuthScheme = 2; } else for (let type of types) {/' "$RF" 2>/dev/null
 grep -q 'types.includes(2)' "$RF" && PATCH=yes || PATCH="no (pattern not found)"
-( cd /tmp/novnc && nohup ./utils/novnc_proxy --vnc localhost:5900 --listen 6080 > /tmp/novnc.log 2>&1 & )
+( cd /tmp/novnc && nohup ./utils/novnc_proxy --vnc localhost:$PORT --listen 6080 > /tmp/novnc.log 2>&1 & )
 sleep 4
 WEB=$(curl -s --max-time 5 -o /dev/null -w '%{http_code}' http://localhost:6080/vnc.html)
 publish "web page step done"
@@ -126,8 +140,7 @@ tar -xzf /tmp/cf.tgz -C /tmp 2>/dev/null; CODES="$CODES $?"; chmod +x /tmp/cloud
 nohup /tmp/cloudflared tunnel --no-autoupdate --url http://localhost:6080 > /tmp/cf.log 2>&1 &
 for i in $(seq 1 60); do URL=$(grep -Eo 'https://[a-z0-9-]+\.trycloudflare\.com' /tmp/cf.log | head -1); [ -n "$URL" ] && break; sleep 2; done
 publish running
-echo "Live Mac link: ${URL}/vnc.html?autoconnect=1&resize=scale  (self-test: $VTEST; TCC: $TCCR; auth types: $SECT; noVNC patch: $PATCH)"
-# nudge the display every 5 minutes so it never idles to black
+echo "Live Mac link: ${URL}/vnc.html?autoconnect=1&resize=scale  (port $PORT; 5900: $VTEST; 5901: $VTEST2; macVNC: $MVB)"
 E=$(( $(date +%s) + MIN * 60 )); while [ $(date +%s) -lt $E ]; do caffeinate -u -t 1 > /dev/null 2>&1; sleep 300; done
 publish ended
 exit 0
