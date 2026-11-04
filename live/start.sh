@@ -5,8 +5,8 @@
 # Login: the page asks for a Password only: type the first 8 characters of LIVE_MAC_PASSWORD. That is the
 # screen password and shows runner's own logged-in desktop. (Username logins: runner's password cannot be
 # changed because the account has a secure token; livemac works but opens its own black session.)
-# Nov 4: noVNC is patched to pick the screen password (macOS lists Apple username login first), and
-# live/vnc_selftest.py does a real screen-password login on the Mac itself and measures the frame.
+# Nov 4 self-tests: screen-password login works (auth ok) but the frame was 100% black while screencapture
+# saw the desktop, so Screen Sharing lacked Screen Recording permission. It is now granted in TCC.
 T() { perl -e 'alarm shift; exec @ARGV' "$@"; }
 MIN="${MINUTES:-}"; [ -z "$MIN" ] && MIN=$(cat live/minutes.txt 2>/dev/null || echo 60)
 MIN=$(( MIN > 340 ? 340 : MIN ))
@@ -15,7 +15,7 @@ else PW=$(openssl rand -hex 4); NOTE="no LIVE_MAC_PASSWORD secret set: a random 
 echo "::add-mask::$PW"
 ME=$(whoami); A=livemac; U="$ME"
 START=$(date -u '+%Y-%m-%d %H:%M'); END=$(date -u -v+${MIN}M '+%Y-%m-%d %H:%M' 2>/dev/null)
-URL=""; VNC="?"; WEB="?"; CODES=""; CONSOLE="?"; SHOT="none"; PWCHK="?"; PWCHK2="?"; TOK="?"; VPW="?"; SECT="?"; PATCH="?"; VTEST="?"
+URL=""; VNC="?"; WEB="?"; CODES=""; CONSOLE="?"; SHOT="none"; PWCHK="?"; PWCHK2="?"; TOK="?"; VPW="?"; SECT="?"; PATCH="?"; VTEST="?"; TCCR="?"
 publish() {
   D=$(mktemp -d); mkdir -p "$D/s"
   {
@@ -23,6 +23,7 @@ publish() {
     echo "link: ${URL:-none}/vnc.html?autoconnect=1&resize=scale"
     echo "login: Password only -> first 8 characters of your secret (runner's screen)"
     echo "self-test (real screen-password login done on the Mac itself): $VTEST"
+    echo "screen sharing permissions (TCC): $TCCR"
     echo "auth types the Mac offers (2 = screen password, 30 = Apple username login): $SECT"
     echo "noVNC prefers screen password: $PATCH"
     echo "password check $ME: $PWCHK"
@@ -64,6 +65,21 @@ if [ "${PWCHK%% *}" != "ok" ]; then
   PWCHK=$(chk "$ME")
 fi
 PWCHK2=$(chk "$A")
+# Screen Sharing needs Screen Recording + input permission (TCC); without it the shared frame is black
+SIP=$(csrutil status 2>/dev/null | head -1 | sed 's/.*: //')
+DB="/Library/Application Support/com.apple.TCC/TCC.db"
+TCCN=0; TCCE=""
+addtcc() { sudo sqlite3 "$DB" "INSERT OR REPLACE INTO access (service, client, client_type, auth_value, auth_reason, auth_version, indirect_object_identifier, flags, last_modified) VALUES ('$1', '$2', $3, 2, 4, 1, 'UNUSED', 0, $(date +%s));" > /tmp/tcc_err.txt 2>&1 && TCCN=$((TCCN+1)) || TCCE="$(head -c 90 /tmp/tcc_err.txt | tr '\n' ' ')"; }
+RM=/System/Library/CoreServices/RemoteManagement
+for SV in kTCCServiceScreenCapture kTCCServicePostEvent kTCCServiceAccessibility kTCCServiceListenEvent; do
+  for B in "$RM"/*.bundle "$RM"/*.app; do
+    [ -d "$B" ] || continue
+    ID=$(defaults read "$B/Contents/Info" CFBundleIdentifier 2>/dev/null); [ -n "$ID" ] && addtcc "$SV" "$ID" 0
+    for X in "$B"/Contents/MacOS/*; do [ -f "$X" ] && addtcc "$SV" "$X" 1; done
+  done
+done
+sudo killall tccd > /dev/null 2>&1
+TCCR="SIP $SIP; rows added $TCCN${TCCE:+; error: $TCCE}"
 # screen sharing access: access group plus all users allowed
 T 20 sudo dseditgroup -o create -q com.apple.access_screensharing > /tmp/grp0.txt 2>&1; CODES="$CODES $?"
 T 20 sudo dseditgroup -o edit -a "$ME" -t user com.apple.access_screensharing > /tmp/grp1.txt 2>&1; CODES="$CODES $?"
@@ -79,6 +95,7 @@ T 10 sudo chmod 600 /Library/Preferences/com.apple.VNCSettings.txt > /dev/null 2
 T 20 sudo defaults write /Library/Preferences/com.apple.RemoteManagement VNCLegacyConnectionsEnabled -bool true > /tmp/share2b.txt 2>&1; CODES="$CODES $?"
 T 60 sudo "$K" -restart -agent -console > /tmp/share3.txt 2>&1; CODES="$CODES $?"
 T 60 sudo "$K" -activate > /tmp/share4.txt 2>&1; CODES="$CODES $?"
+sudo killall screensharingd ScreensharingAgent > /dev/null 2>&1
 T 20 sudo launchctl enable system/com.apple.screensharing > /tmp/share5.txt 2>&1; CODES="$CODES $?"
 T 20 sudo launchctl bootstrap system /System/Library/LaunchDaemons/com.apple.screensharing.plist > /tmp/share6.txt 2>&1; CODES="$CODES $?"
 T 20 sudo launchctl kickstart -k system/com.apple.screensharing > /tmp/share7.txt 2>&1; CODES="$CODES $?"
@@ -109,7 +126,7 @@ tar -xzf /tmp/cf.tgz -C /tmp 2>/dev/null; CODES="$CODES $?"; chmod +x /tmp/cloud
 nohup /tmp/cloudflared tunnel --no-autoupdate --url http://localhost:6080 > /tmp/cf.log 2>&1 &
 for i in $(seq 1 60); do URL=$(grep -Eo 'https://[a-z0-9-]+\.trycloudflare\.com' /tmp/cf.log | head -1); [ -n "$URL" ] && break; sleep 2; done
 publish running
-echo "Live Mac link: ${URL}/vnc.html?autoconnect=1&resize=scale  (self-test: $VTEST; auth types: $SECT; noVNC patch: $PATCH)"
+echo "Live Mac link: ${URL}/vnc.html?autoconnect=1&resize=scale  (self-test: $VTEST; TCC: $TCCR; auth types: $SECT; noVNC patch: $PATCH)"
 # nudge the display every 5 minutes so it never idles to black
 E=$(( $(date +%s) + MIN * 60 )); while [ $(date +%s) -lt $E ]; do caffeinate -u -t 1 > /dev/null 2>&1; sleep 300; done
 publish ended
