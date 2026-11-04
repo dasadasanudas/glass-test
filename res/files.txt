@@ -1,0 +1,8 @@
+total 25224
+drwxr-xr-x  7 runner  staff       224 Nov  4 14:13 .
+drwxr-xr-x  3 runner  staff        96 Nov  4 14:13 ..
+-rw-r--r--  1 runner  staff  12851574 Nov  4 14:13 anim-stills.zip
+-rw-r--r--  1 runner  staff        34 Nov  4 14:13 compile.txt
+-rw-r--r--  1 runner  staff         0 Nov  4 14:13 files.txt
+-rw-------  1 runner  staff     42887 Nov  4 14:13 lock.mov
+-rw-r--r--  1 runner  staff     10456 Nov  4 14:13 log.txt

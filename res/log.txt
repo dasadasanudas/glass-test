@@ -1,0 +1,287 @@
+/Users/runner/work/_temp/anim/wall_bands.png 4881
+/Users/runner/work/_temp/anim/wall_tiles.png 16951
+/Users/runner/work/_temp/anim/wall_check.png 8979
+RT=false RM=false IC=false
+
+Finder window id 50
+Finder bounds 60, 60 Finder bounds 964, 644
+pos apple 27 file 127 edit 170 view 217 go 261 win 314 cc 854,15 clock 949,15 dockfinder 60,729 apps 104,729
+move 520 520 t=1793801162.290
+rec menubar_light start 1793801162.335 len 62 el 33
+ev 1793801164.480 click File
+click 127 15 hold 90 t=1793801164.679
+ev 1793801172.243 glide File to Edit
+glide move 127 15 > 170 15 260ms t=1793801172.290
+ev 1793801174.851 glide Edit to View
+glide move 170 15 > 217 15 260ms t=1793801174.859
+ev 1793801179.650 glide View to Go
+glide move 217 15 > 261 15 260ms t=1793801179.656
+ev 1793801183.500 glide Go to Window
+glide move 261 15 > 314 15 260ms t=1793801183.507
+ev 1793801186.767 hover down Window
+glide move 314 15 > 314 65 350ms t=1793801186.779
+glide move 314 65 > 314 115 350ms t=1793801187.650
+ev 1793801188.678 escape
+ev 1793801190.490 click View
+click 217 15 hold 90 t=1793801190.600
+ev 1793801191.675 hover as List
+glide move 217 15 > 305 72 400ms t=1793801191.679
+ev 1793801192.865 choose as List
+click 305 72 hold 70 t=1793801192.951
+ev 1793801194.753 click Go then outside
+click 261 15 hold 90 t=1793801194.863
+click 30 430 hold 60 t=1793801196.121
+ev 1793801197.538 press-drag-release Edit to Select All
+down 170 15 t=1793801197.605
+glide drag 170 15 > 251 179 500ms t=1793801198.390
+up 251 179 t=1793801199.360
+ev 1793801200.912 Apple menu
+click 27 15 hold 90 t=1793801201.043
+ev 1793801206.028 fast sweep
+click 127 15 hold 90 t=1793801206.153
+glide move 127 15 > 314 15 300ms t=1793801206.963
+glide move 314 15 > 127 15 300ms t=1793801208.008
+ev 1793801210.931 right-click desktop
+rclick 30 430 t=1793801211.079
+rec overrun 1793801231.080
+drag/anim.sh: line 12:  1570 Terminated: 15          perl -e 'alarm shift; exec @ARGV' "$@"
+recwait done el 104
+rec menubar_light exit 143 1793801233.544
+swift done el 106
+seg1 100 160 151 24
+seg2 360 160 151 24
+suiseg 600 160 153 24
+slider1 100 240 240 16
+slider2 400 240 240 16
+suislider 100 300 240 16
+switch1 100 370 54 24
+suitoggle 220 370 54 24
+pop1 100 440 137 24
+pull1 340 440 94 24
+suimenu 580 440 84 24
+tbseg 629 86 183 36
+knob1 166 240 20 16
+knob2 455 240 20 16
+window 60 78 760 504
+winid 73 0 0 0
+rec ctl_light start 1793801245.850 len 84 el 116
+ev 1793801247.960 seg1 click 3rd
+click 225 172 hold 350 t=1793801248.063
+ev 1793801249.475 seg1 press selected
+down 225 172 t=1793801249.529
+ev 1793801250.359 seg1 drag to 1st
+glide drag 225 172 > 125 172 900ms t=1793801250.368
+up 125 172 t=1793801251.882
+ev 1793801252.873 seg1 quick 2nd
+click 175 172 hold 70 t=1793801253.010
+ev 1793801254.125 seg2 click 3rd
+click 485 172 hold 350 t=1793801254.208
+ev 1793801255.530 seg2 press selected
+down 485 172 t=1793801255.571
+ev 1793801256.434 seg2 drag to 1st
+glide drag 485 172 > 385 172 900ms t=1793801256.441
+up 385 172 t=1793801257.917
+ev 1793801258.840 seg2 quick 2nd
+click 435 172 hold 70 t=1793801258.966
+ev 1793801260.083 suiseg click 3rd
+click 727 172 hold 350 t=1793801260.180
+ev 1793801261.593 suiseg press selected
+down 727 172 t=1793801261.712
+ev 1793801262.532 suiseg drag to 1st
+glide drag 727 172 > 625 172 900ms t=1793801262.541
+up 625 172 t=1793801264.012
+ev 1793801264.941 suiseg quick 2nd
+click 676 172 hold 70 t=1793801265.030
+ev 1793801266.058 tbseg click 3rd
+click 781 104 hold 350 t=1793801266.172
+ev 1793801267.510 tbseg press selected
+down 781 104 t=1793801267.563
+ev 1793801268.382 tbseg drag to 1st
+glide drag 781 104 > 659 104 900ms t=1793801268.389
+up 659 104 t=1793801269.754
+ev 1793801270.677 tbseg quick 2nd
+click 720 104 hold 70 t=1793801270.760
+ev 1793801271.817 slider1 click track 80
+click 286 248 hold 400 t=1793801271.945
+ev 1793801273.453 slider1 press knob
+down 286 248 t=1793801273.484
+ev 1793801274.284 slider1 drag to 20
+glide drag 286 248 > 154 248 900ms t=1793801274.291
+up 154 248 t=1793801275.606
+ev 1793801276.624 slider1 quick 60
+click 242 248 hold 70 t=1793801276.695
+ev 1793801277.809 slider2 click track 80
+click 586 248 hold 400 t=1793801277.861
+ev 1793801279.371 slider2 press knob
+down 586 248 t=1793801279.414
+ev 1793801280.275 slider2 drag to 20
+glide drag 586 248 > 454 248 900ms t=1793801280.282
+up 454 248 t=1793801281.571
+ev 1793801282.650 slider2 quick 60
+click 542 248 hold 70 t=1793801282.724
+ev 1793801283.912 suislider click track 80
+click 286 308 hold 400 t=1793801283.994
+ev 1793801285.452 suislider press knob
+down 286 308 t=1793801285.503
+ev 1793801286.313 suislider drag to 20
+glide drag 286 308 > 154 308 900ms t=1793801286.320
+up 154 308 t=1793801287.613
+ev 1793801288.651 suislider quick 60
+click 242 308 hold 70 t=1793801288.775
+ev 1793801289.886 switch1 click
+click 127 382 hold 90 t=1793801289.944
+ev 1793801291.088 switch1 press hold
+down 127 382 t=1793801291.125
+up 127 382 t=1793801292.042
+ev 1793801293.104 switch1 drag
+down 107 382 t=1793801293.153
+glide drag 107 382 > 147 382 500ms t=1793801293.484
+up 147 382 t=1793801294.390
+ev 1793801295.449 suitoggle click
+click 247 382 hold 90 t=1793801295.575
+ev 1793801296.794 suitoggle press hold
+down 247 382 t=1793801296.833
+up 247 382 t=1793801297.750
+ev 1793801298.788 suitoggle drag
+down 227 382 t=1793801298.821
+glide drag 227 382 > 267 382 500ms t=1793801299.154
+up 267 382 t=1793801299.998
+ev 1793801301.063 pop1 open
+click 168 452 hold 90 t=1793801301.129
+ev 1793801302.384 pop1 hover
+glide move 168 452 > 168 518 450ms t=1793801302.389
+ev 1793801303.600 pop1 choose
+click 168 518 hold 70 t=1793801303.679
+ev 1793801304.990 pop1 reopen
+click 168 452 hold 90 t=1793801305.079
+ev 1793801306.427 pop1 esc
+ev 1793801308.056 pull1 open
+click 387 452 hold 90 t=1793801308.131
+ev 1793801309.427 pull1 esc
+ev 1793801310.897 suimenu open
+click 622 452 hold 90 t=1793801310.995
+ev 1793801312.347 suimenu hover
+glide move 622 452 > 622 518 450ms t=1793801312.352
+ev 1793801313.573 suimenu choose
+click 622 518 hold 70 t=1793801313.695
+ev 1793801315.022 suimenu reopen
+click 622 452 hold 90 t=1793801315.112
+ev 1793801316.446 suimenu esc
+rec overrun 1793801336.178
+drag/anim.sh: line 12:  2984 Terminated: 15          perl -e 'alarm shift; exec @ARGV' "$@"
+recwait done el 209
+rec ctl_light exit 143 1793801338.406
+Calendar bounds 60, 60 Calendar bounds 964, 647
+rec cal_light start 1793801350.447 len 17 el 221
+ev 1793801352.514 cal view 1
+ev 1793801355.263 cal view 2
+ev 1793801358.022 cal view 3
+ev 1793801360.683 cal view 4
+rec overrun 1793801374.377
+drag/anim.sh: line 12:  6006 Terminated: 15          perl -e 'alarm shift; exec @ARGV' "$@"
+recwait done el 247
+rec cal_light exit 143 1793801376.796
+rec sys_light start 1793801409.058 len 40 el 280
+ev 1793801411.110 CC open
+click 854 15 hold 90 t=1793801411.226
+ev 1793801413.308 CC close
+click 854 15 hold 90 t=1793801413.444
+ev 1793801414.921 NC open
+click 949 15 hold 90 t=1793801415.050
+ev 1793801417.129 NC close
+click 949 15 hold 90 t=1793801417.250
+ev 1793801418.759 Spotlight open
+ev 1793801424.651 Spotlight close
+ev 1793801428.124 Apps open
+click 104 729 hold 90 t=1793801428.267
+ev 1793801430.886 Apps close
+ev 1793801433.279 Dock menu
+rclick 60 729 t=1793801433.373
+rec overrun 1793801456.098
+drag/anim.sh: line 12:  7411 Terminated: 15          perl -e 'alarm shift; exec @ARGV' "$@"
+recwait done el 329
+rec sys_light exit 143 1793801458.490
+rec win_light start 1793801459.820 len 25 el 330
+ev 1793801461.901 new window
+ev 1793801464.752 close window cmd-w
+ev 1793801467.677 minimize
+click 109 86 hold 90 t=1793801467.809
+ev 1793801472.891 restore
+click 930 732 hold 90 t=1793801472.988
+ev 1793801475.403 close red
+click 86 86 hold 90 t=1793801475.550
+rec overrun 1793801491.048
+drag/anim.sh: line 12:  8813 Terminated: 15          perl -e 'alarm shift; exec @ARGV' "$@"
+recwait done el 364
+rec win_light exit 143 1793801493.401
+rec ctl_dark start 1793801499.774 len 40 el 370
+ev 1793801501.840 seg1 click 3rd
+click 225 172 hold 350 t=1793801501.967
+ev 1793801503.287 seg1 press selected
+down 225 172 t=1793801503.344
+ev 1793801504.219 seg1 drag to 1st
+glide drag 225 172 > 125 172 900ms t=1793801504.233
+up 125 172 t=1793801505.659
+ev 1793801506.645 seg1 quick 2nd
+click 175 172 hold 70 t=1793801506.761
+ev 1793801507.778 suiseg click 3rd
+click 727 172 hold 350 t=1793801507.861
+ev 1793801509.260 suiseg press selected
+down 727 172 t=1793801509.308
+ev 1793801510.134 suiseg drag to 1st
+glide drag 727 172 > 625 172 900ms t=1793801510.147
+up 625 172 t=1793801511.675
+ev 1793801512.703 suiseg quick 2nd
+click 676 172 hold 70 t=1793801512.845
+ev 1793801513.937 slider1 click track 80
+click 286 248 hold 400 t=1793801514.001
+ev 1793801515.523 slider1 press knob
+down 286 248 t=1793801515.591
+ev 1793801516.563 slider1 drag to 20
+glide drag 286 248 > 154 248 900ms t=1793801516.573
+up 154 248 t=1793801517.891
+ev 1793801518.984 slider1 quick 60
+click 242 248 hold 70 t=1793801519.050
+ev 1793801520.158 switch1 click
+click 127 382 hold 90 t=1793801520.280
+ev 1793801521.436 switch1 press hold
+down 127 382 t=1793801521.483
+up 127 382 t=1793801522.507
+ev 1793801523.542 switch1 drag
+down 107 382 t=1793801523.601
+glide drag 107 382 > 147 382 500ms t=1793801523.873
+up 147 382 t=1793801524.789
+ev 1793801525.842 pop1 open
+click 168 452 hold 90 t=1793801525.926
+ev 1793801527.324 pop1 hover
+glide move 168 452 > 168 518 450ms t=1793801527.338
+ev 1793801528.592 pop1 choose
+click 168 518 hold 70 t=1793801528.662
+ev 1793801530.037 pop1 reopen
+click 168 452 hold 90 t=1793801530.183
+ev 1793801531.636 pop1 esc
+rec overrun 1793801546.139
+drag/anim.sh: line 12: 10130 Terminated: 15          perl -e 'alarm shift; exec @ARGV' "$@"
+recwait done el 419
+rec ctl_dark exit 143 1793801548.510
+rec menubar_dark start 1793801550.189 len 18 el 421
+ev 1793801552.253 dark click File
+click 127 15 hold 90 t=1793801552.364
+ev 1793801553.727 dark glide to View
+glide move 127 15 > 217 15 400ms t=1793801553.737
+ev 1793801555.242 dark escape
+ev 1793801556.993 dark Apple
+click 27 15 hold 90 t=1793801557.125
+ev 1793801560.087 dark right-click desktop
+rclick 30 430 t=1793801560.182
+rec overrun 1793801575.068
+drag/anim.sh: line 12: 11651 Terminated: 15          perl -e 'alarm shift; exec @ARGV' "$@"
+recwait done el 448
+rec menubar_dark exit 143 1793801577.434
+rec lock start 1793801583.954 len 12 el 454
+ev 1793801585.990 lock
+rec lock exit 0 1793801588.416
+move 512 600 t=1793801592.169
+recwait done el 464
+RT=false RM=false IC=false
+end el 465
