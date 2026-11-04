@@ -1,10 +1,12 @@
 # Live Mac self-test: logs in to a VNC server on this Mac with the screen password, exactly like the noVNC
-# page does, watches ~8 s of frames, reports how much of each is not black, and saves the last frame.
-# Usage: python3 live/vnc_selftest.py <password> [port] [png]   (one line out; never prints the password)
+# page does, watches ~6 s of frames, reports how much of each is not black, and saves the last frame.
+# With 'input', it then clicks the Apple menu over VNC, checks the screen changed, and presses Escape.
+# Usage: python3 live/vnc_selftest.py <password> [port] [png] [input]  (one line out; never prints it)
 import socket, struct, subprocess, sys, time, zlib
 pw = sys.argv[1].encode()[:8].ljust(8, b'\0')
 PORT = int(sys.argv[2]) if len(sys.argv) > 2 else 5900
 OUT = sys.argv[3] if len(sys.argv) > 3 else '/tmp/vnc.png'
+INPUT = len(sys.argv) > 4 and sys.argv[4] == 'input'
 key = bytes(int('{:08b}'.format(b)[::-1], 2) for b in pw)   # VNC uses DES with bit-reversed key bytes
 
 def rx(s, n):
@@ -65,7 +67,7 @@ try:
             reason = rx(s, struct.unpack('>I', rx(s, 4))[0]).decode(errors='replace')
         except Exception:
             pass
-        print('auth: REJECTED (%d) %s' % (res, reason))
+        print('auth: REJECTED (%d) %s | LAST=0' % (res, reason))
         sys.exit(0)
     s.sendall(b'\x01')
     w, h = struct.unpack('>HH', rx(s, 4))
@@ -74,37 +76,50 @@ try:
     fb = bytearray(w * h * 4)
     s.sendall(b'\x00\x00\x00\x00' + struct.pack('>BBBBHHHBBB3x', 32, 24, 0, 1, 255, 255, 255, 16, 8, 0))
     s.sendall(struct.pack('>BBHi', 2, 0, 1, 0))
-    s.sendall(struct.pack('>BBHHHH', 3, 0, 0, 0, w, h))
-    seen = []; t0 = time.time(); rects = 0
-    while time.time() - t0 < 8:
-        try:
+
+    def frame():
+        s.sendall(struct.pack('>BBHHHH', 3, 0, 0, 0, w, h))
+        while True:
             t = rx(s, 1)[0]
-        except socket.timeout:
-            seen.append('timeout'); break
-        if t == 0:
-            rx(s, 1)
-            nr = struct.unpack('>H', rx(s, 2))[0]
-            for _ in range(nr):
-                x, y, rw, rh, enc = struct.unpack('>HHHHi', rx(s, 12))
-                if enc != 0:
-                    raise RuntimeError('non-raw encoding %d' % enc)
-                data = rx(s, rw * rh * 4); rects += 1
-                for row in range(rh):
-                    o = ((y + row) * w + x) * 4
-                    fb[o:o + rw * 4] = data[row * rw * 4:(row + 1) * rw * 4]
-            seen.append('%.1f' % visible(fb))
-            time.sleep(0.7)
-            s.sendall(struct.pack('>BBHHHH', 3, 0, 0, 0, w, h))
-        elif t == 2:
-            continue
-        elif t == 3:
-            rx(s, 3)
-            rx(s, struct.unpack('>I', rx(s, 4))[0])
-        else:
-            raise RuntimeError('unexpected message %d after %s' % (t, seen))
+            if t == 0:
+                rx(s, 1)
+                nr = struct.unpack('>H', rx(s, 2))[0]
+                for _ in range(nr):
+                    x, y, rw, rh, enc = struct.unpack('>HHHHi', rx(s, 12))
+                    if enc != 0:
+                        raise RuntimeError('non-raw encoding %d' % enc)
+                    data = rx(s, rw * rh * 4)
+                    for row in range(rh):
+                        o = ((y + row) * w + x) * 4
+                        fb[o:o + rw * 4] = data[row * rw * 4:(row + 1) * rw * 4]
+                return visible(fb)
+            elif t == 2:
+                continue
+            elif t == 3:
+                rx(s, 3)
+                rx(s, struct.unpack('>I', rx(s, 4))[0])
+            else:
+                raise RuntimeError('unexpected message %d' % t)
+
+    seen = []
+    for _ in range(6):
+        seen.append('%.1f' % frame())
+        time.sleep(0.6)
     save_png(OUT, w, h, fb)
-    last = float(seen[-1]) if seen and seen[-1] != 'timeout' else 0.0
-    print('auth: ok, screen %dx%d, %d updates, visible %% per update: %s | LAST=%.1f' % (w, h, len(seen), ' '.join(seen[:10]), last))
+    last = float(seen[-1])
+    extra = ''
+    if INPUT:
+        before = last
+        s.sendall(struct.pack('>BBHH', 5, 0, 30, 14)); time.sleep(0.3)        # move to the Apple menu
+        s.sendall(struct.pack('>BBHH', 5, 1, 30, 14)); time.sleep(0.15)       # press
+        s.sendall(struct.pack('>BBHH', 5, 0, 30, 14)); time.sleep(1.5)        # release
+        after = frame()
+        save_png(OUT.replace('.png', '_menu.png'), w, h, fb)
+        s.sendall(struct.pack('>BBxxI', 4, 1, 0xff1b)); s.sendall(struct.pack('>BBxxI', 4, 0, 0xff1b)); time.sleep(1.0)   # Escape
+        closed = frame()
+        ok = after > before + 1.0 and closed < after - 0.5
+        extra = ' | input: %s (before %.1f%%, after click %.1f%%, after Escape %.1f%%)' % ('works' if ok else 'NOT confirmed', before, after, closed)
+    print('auth: ok, screen %dx%d, visible %% per frame: %s%s | LAST=%.1f' % (w, h, ' '.join(seen), extra, last))
 except SystemExit:
     raise
 except Exception as e:
