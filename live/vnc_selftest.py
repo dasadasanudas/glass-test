@@ -14,6 +14,19 @@ def rx(s, n):
         b += c
     return b
 
+def des(block):
+    # macOS ships LibreSSL at /usr/bin/openssl (DES built in); Homebrew OpenSSL 3 needs the legacy provider
+    errs = []
+    for cmd in (['/usr/bin/openssl', 'enc', '-des-ecb'], ['openssl', 'enc', '-des-ecb', '-provider', 'legacy', '-provider', 'default'], ['openssl', 'enc', '-des-ecb']):
+        try:
+            r = subprocess.run(cmd + ['-K', key.hex(), '-nopad', '-nosalt'], input=block, capture_output=True)
+        except Exception as e:
+            errs.append(str(e)[:40]); continue
+        if r.returncode == 0 and len(r.stdout) == 16:
+            return r.stdout
+        errs.append(r.stderr.decode(errors='replace').strip().split('\n')[-1][:60])
+    raise RuntimeError('des failed: ' + ' | '.join(errs))
+
 try:
     s = socket.create_connection(('127.0.0.1', 5900), 10)
     s.settimeout(20)
@@ -27,10 +40,7 @@ try:
         raise RuntimeError('no screen-password type in %s' % types)
     s.sendall(b'\x02')
     ch = rx(s, 16)
-    r = subprocess.run(['openssl', 'enc', '-des-ecb', '-K', key.hex(), '-nopad', '-nosalt'], input=ch, capture_output=True)
-    if r.returncode != 0 or len(r.stdout) != 16:
-        raise RuntimeError('des failed: ' + r.stderr.decode(errors='replace')[:80])
-    s.sendall(r.stdout)
+    s.sendall(des(ch))
     res = struct.unpack('>I', rx(s, 4))[0]
     if res != 0:
         reason = ''
