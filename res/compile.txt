@@ -1,0 +1,2 @@
+mouse2 clang exit 0
+rec swiftc exit 0
