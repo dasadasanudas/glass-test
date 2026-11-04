@@ -1,1 +1,1 @@
-anim2ref 2026-11-04 run 1
+anim2ref 2026-11-04 run 2 (bash 3.2 source fix)

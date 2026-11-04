@@ -1,10 +1,13 @@
 #!/bin/bash
 # anim2: anim.sh's setup (prefs, walls, Finder window, menu bar positions, AnimRef build), then a ScreenCaptureKit
 # recorder (drag/rec.swift) instead of screencapture -v, plus menu-area still bursts. Results: branch anim2-results.
+# macOS bash 3.2 cannot source a process substitution, so the shared setup is written to a file first.
 set +e
 ( perl -e 'alarm shift; exec @ARGV' 300 swiftc -O -swift-version 5 drag/rec.swift -o "$RUNNER_TEMP/rec" > "$RUNNER_TEMP/swiftc_rec.txt" 2>&1; echo "rec swiftc exit $?" >> "$RUNNER_TEMP/swiftc_rec.txt"; codesign --force -s - "$RUNNER_TEMP/rec" > /dev/null 2>&1 ) &
 RECB=$!
-source <(sed -n '1,/^# ---------------- 1. menu bar, light/p' drag/anim.sh)
+sed -n '1,/^# ---------------- 1. menu bar, light/p' drag/anim.sh > "$RUNNER_TEMP/anim_head.sh"
+. "$RUNNER_TEMP/anim_head.sh"
+echo "head sourced S=$S" >> "$LOG"
 mkdir -p "$S/burst"
 rec() { ( T $(( $2 + 40 )) "$RUNNER_TEMP/rec" "$S/vid/$1.mov" "$2" > "$S/vid/$1.txt" 2>&1; echo "rec $1 exit $? $(ts)" >> "$LOG" ) & RP=$!; REND=$(( $(date +%s) + $2 + 20 )); echo "rec $1 start $(ts) len $2 el $(el)" >> "$LOG"; sleep 1.5; }
 burst() { local n=$1 k=0; ( while [ $k -lt $2 ]; do screencapture -x -R0,0,1024,420 "$S/burst/${n}_$(printf %03d $k).png" 2>/dev/null; echo "$k $(ts)" >> "$S/burst/${n}.txt"; k=$((k+1)); done ) & }
