@@ -1,1 +1,1 @@
-appref run 2026-11-04: app windows with real glass over the bands and tiles wallpapers
+mergeref run 2026-11-04: NSGlassEffectContainerView merging probe
