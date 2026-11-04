@@ -3,9 +3,10 @@
 # HTTPS link (Cloudflare quick tunnel). Progress and the link go to s/status.txt on the live-status branch
 # and the job log. Log in with the username shown there (runner = the Mac's own logged-in screen) and your
 # password. Stop it by cancelling the run.
-# Black-screen fix (Nov 4): the console display is kept awake (pmset + caffeinate), the screensaver and
-# lock are off, Screen Sharing access is granted to runner explicitly, and a local screenshot
-# (s/screen.png on live-status) proves whether the Mac itself is drawing.
+# Nov 4: the console display is kept awake (pmset + caffeinate), the screensaver and lock are off, and a
+# local screenshot (s/screen.png on live-status) proves the Mac is drawing (it was: Finder + Dock on the
+# runner's solid black wallpaper). Access: all users allowed (specifiedUsers rejected logins) and both
+# accounts are put in the com.apple.access_screensharing group.
 T() { perl -e 'alarm shift; exec @ARGV' "$@"; }
 MIN="${MINUTES:-}"; [ -z "$MIN" ] && MIN=$(cat live/minutes.txt 2>/dev/null || echo 60)
 MIN=$(( MIN > 340 ? 340 : MIN ))
@@ -14,13 +15,14 @@ else PW=$(openssl rand -hex 4); NOTE="no LIVE_MAC_PASSWORD secret set: a random 
 echo "::add-mask::$PW"
 ME=$(whoami); A=livemac; U="$ME"
 START=$(date -u '+%Y-%m-%d %H:%M'); END=$(date -u -v+${MIN}M '+%Y-%m-%d %H:%M' 2>/dev/null)
-URL=""; VNC="?"; WEB="?"; CODES=""; CONSOLE="?"; SHOT="none"
+URL=""; VNC="?"; WEB="?"; CODES=""; CONSOLE="?"; SHOT="none"; PWCHK="?"
 publish() {
   D=$(mktemp -d); mkdir -p "$D/s"
   {
     echo "state: $1"
     echo "link: ${URL:-none}/vnc.html?autoconnect=1&resize=scale"
     echo "username: $U (use this one: it is the Mac's logged-in screen; $A opens a separate session that can stay black)"
+    echo "password check for $U: $PWCHK"
     echo "screen sharing: $VNC"
     echo "web page (local check): $WEB"
     echo "console user: $CONSOLE"
@@ -48,8 +50,14 @@ T 20 sudo defaults write /Library/Preferences/com.apple.screensaver askForPasswo
 T 90 sudo sysadminctl -addUser "$A" -fullName "Live Mac" -password "$PW" -admin > /tmp/acct1.txt 2>&1; CODES="$CODES $?"
 T 90 sudo sysadminctl -resetPasswordFor "$ME" -newPassword "$PW" -adminUser "$A" -adminPassword "$PW" > /tmp/acct2.txt 2>&1; R2=$?; CODES="$CODES $R2"
 if [ "$R2" != "0" ]; then T 30 sudo dscl . -passwd "/Users/$ME" "$PW" > /tmp/acct3.txt 2>&1; R3=$?; CODES="$CODES $R3"; [ "$R3" != "0" ] && U="$A"; fi
+# does the new password really open the account? (dscl authonly exits 0 on success)
+T 20 dscl /Local/Default -authonly "$ME" "$PW" > /tmp/pwchk.txt 2>&1 && PWCHK=ok || PWCHK="failed ($(head -c 120 /tmp/pwchk.txt | tr '\n' ' '))"
+# screen sharing access: the access group plus all users allowed
+T 20 sudo dseditgroup -o create -q com.apple.access_screensharing > /tmp/grp0.txt 2>&1; CODES="$CODES $?"
+T 20 sudo dseditgroup -o edit -a "$ME" -t user com.apple.access_screensharing > /tmp/grp1.txt 2>&1; CODES="$CODES $?"
+T 20 sudo dseditgroup -o edit -a "$A" -t user com.apple.access_screensharing > /tmp/grp2.txt 2>&1; CODES="$CODES $?"
 K=/System/Library/CoreServices/RemoteManagement/ARDAgent.app/Contents/Resources/kickstart
-T 60 sudo "$K" -configure -allowAccessFor -specifiedUsers > /tmp/share0.txt 2>&1; CODES="$CODES $?"
+T 60 sudo "$K" -configure -allowAccessFor -allUsers -privs -all > /tmp/share0.txt 2>&1; CODES="$CODES $?"
 T 60 sudo "$K" -configure -access -on -users "$ME,$A" -privs -all > /tmp/share1.txt 2>&1; CODES="$CODES $?"
 T 60 sudo "$K" -configure -clientopts -setvnclegacy -vnclegacy yes -setvncpw -vncpw "${PW:0:8}" > /tmp/share2.txt 2>&1; CODES="$CODES $?"
 T 20 sudo defaults write /Library/Preferences/com.apple.RemoteManagement VNCLegacyConnectionsEnabled -bool true > /tmp/share2b.txt 2>&1; CODES="$CODES $?"
@@ -76,7 +84,7 @@ tar -xzf /tmp/cf.tgz -C /tmp 2>/dev/null; CODES="$CODES $?"; chmod +x /tmp/cloud
 nohup /tmp/cloudflared tunnel --no-autoupdate --url http://localhost:6080 > /tmp/cf.log 2>&1 &
 for i in $(seq 1 60); do URL=$(grep -Eo 'https://[a-z0-9-]+\.trycloudflare\.com' /tmp/cf.log | head -1); [ -n "$URL" ] && break; sleep 2; done
 publish running
-echo "Live Mac link: ${URL}/vnc.html?autoconnect=1&resize=scale  (username: $U, screen sharing: $VNC, page: $WEB, console: $CONSOLE)"
+echo "Live Mac link: ${URL}/vnc.html?autoconnect=1&resize=scale  (username: $U, password check: $PWCHK, screen sharing: $VNC, page: $WEB, console: $CONSOLE)"
 # nudge the display every 5 minutes so it never idles to black
 E=$(( $(date +%s) + MIN * 60 )); while [ $(date +%s) -lt $E ]; do caffeinate -u -t 1 > /dev/null 2>&1; sleep 300; done
 publish ended
