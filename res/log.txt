@@ -1,0 +1,39 @@
+/Users/runner/work/_temp/app/wall_bands.png 4881
+/Users/runner/work/_temp/app/wall_tiles.png 16951
+/Users/runner/work/_temp/app/wall_check.png 8979
+RT=false RM=false IC=false
+
+Finder window id 50
+Finder bounds 60, 60 Finder bounds 964, 644
+ax finder_icon_light 0
+looks finder_icon done 10:59:18
+drag/appref.sh: line 35:  5612 Alarm clock: 14         perl -e 'alarm shift; exec @ARGV' "$@"
+ax finder_list_light 142
+looks finder_list done 11:00:36
+ax finder_column_light 0
+looks finder_column done 11:01:34
+
+System Settings bounds 60, 60 System Settings bounds 723, 644
+drag/appref.sh: line 35:  9294 Alarm clock: 14         perl -e 'alarm shift; exec @ARGV' "$@"
+ax settings_light 142
+looks settings done 11:03:09
+Notes bounds 60, 60 Notes bounds 1000, 660
+ax notes_light 0
+looks notes done 11:04:06
+Calculator bounds 60, 60 Calculator bounds 230, 408
+looks calculator done 11:04:47
+TextEdit bounds 60, 60 TextEdit bounds 964, 649
+looks textedit done 11:05:32
+Terminal bounds 60, 60 Terminal bounds 961, 649
+looks terminal done 11:06:12
+Safari bounds 60, 60 Safari bounds 1000, 681
+ax safari_light 0
+looks safari done 11:07:08
+Reminders bounds 60, 30 Reminders bounds 964, 681
+ax reminders_light 0
+looks reminders done 11:07:58
+Calendar bounds 60, 60 Calendar bounds 964, 649
+looks calendar done 11:08:40
+Clock bounds 60, 60 Clock bounds 1000, 681
+looks clock done 11:09:19
+RT=false RM=false IC=false
