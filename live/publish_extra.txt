@@ -1,0 +1,1 @@
+start.sh copies /tmp/vnc.png (the frame Screen Sharing actually sends) to s/vnc.png when it exists.
