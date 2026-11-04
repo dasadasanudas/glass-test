@@ -3,7 +3,9 @@
 # A trigger commit whose subject contains "accent" runs the accent probe instead (one launch per AppleAccentColor).
 # A subject containing "sysref" first runs drag/sysref.sh (system UI with transparency and motion on, results/sysref.zip).
 # A subject containing "appref" runs only drag/appref.sh (app windows with real glass, results/appref.zip).
+# A subject containing "animref" runs only drag/anim.sh (animation references on video, branch anim-results).
 # A subject containing "mergeref" runs only drag/merge.sh (glass merging probe, results/merge-cap.zip).
+if git log -1 --format=%s | grep -q 'animref'; then bash drag/anim.sh; exit 0; fi
 if git log -1 --format=%s | grep -q 'appref'; then bash drag/appref.sh; exit 0; fi
 if git log -1 --format=%s | grep -q 'mergeref'; then bash drag/merge.sh; exit 0; fi
 if git log -1 --format=%s | grep -q 'accent'; then
