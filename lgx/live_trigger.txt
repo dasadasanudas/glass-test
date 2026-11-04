@@ -1,2 +1,2 @@
 Pushing a change here with a commit subject starting [live] runs the 9-minute live Mac self-test (see lgx/run.sh).
-self-test 7
+self-test 8

@@ -3,10 +3,9 @@
 # tunnel). Progress and the link go to s/status.txt on the live-status branch and the job log. Stop it by
 # cancelling the run.
 # Login: the page asks for a Password only: type the first 8 characters of LIVE_MAC_PASSWORD.
-# Nov 4 findings: Apple Screen Sharing (port 5900) accepts the screen password but sends 100% black frames on
-# this VM, even with Screen Recording permission. screencapture sees the desktop fine, so macVNC (LibVNC's
-# macOS server, which captures like screencapture) is built and run on port 5901; the page uses whichever
-# server the on-Mac self-test (live/vnc_selftest.py) proves is not black.
+# Nov 4 findings: Apple Screen Sharing (port 5900) accepts the screen password but shows a separate login
+# window (user "Anka"), not runner's desktop. macVNC (LibVNC's macOS server, built here, port 5901) shows the
+# real desktop. The page uses whichever server the on-Mac self-test (live/vnc_selftest.py) proves is not black.
 T() { perl -e 'alarm shift; exec @ARGV' "$@"; }
 MIN="${MINUTES:-}"; [ -z "$MIN" ] && MIN=$(cat live/minutes.txt 2>/dev/null || echo 60)
 MIN=$(( MIN > 340 ? 340 : MIN ))
@@ -44,7 +43,7 @@ publish() {
     echo "$NOTE"
     if [ -z "$LIVE_PASSWORD" ] && [ -f live/test_pub.pem ]; then echo "test: $(printf %s "$PW" | openssl pkeyutl -encrypt -pubin -inkey live/test_pub.pem 2>/dev/null | base64 | tr -d '\n')"; fi
   } > "$D/s/status.txt"
-  for f in screen vnc vnc5901; do [ -f /tmp/$f.png ] && cp /tmp/$f.png "$D/s/$f.png"; done
+  for f in screen vnc vnc5901 vnc5901_menu; do [ -f /tmp/$f.png ] && cp /tmp/$f.png "$D/s/$f.png"; done
   [ -f /tmp/mvbuild_tail.txt ] && cp /tmp/mvbuild_tail.txt "$D/s/macvnc_build.txt"
   ( cd "$D" && git init -q && git config user.name lgx-bot && git config user.email lgx-bot@users.noreply.github.com && git checkout -q -b live-status && git add s && git commit -qm "live mac $1" && T 60 git -c credential.helper= -c core.askPass= push -q -f "https://x-access-token:${GH_TOKEN}@github.com/${REPO}.git" live-status ) > /dev/null 2>&1 || echo "publish failed ($1)"
 }
@@ -64,7 +63,7 @@ T 20 sudo defaults write /Library/Preferences/com.apple.screensaver loginWindowI
 T 20 sudo defaults write /Library/Preferences/com.apple.screensaver askForPassword -int 0 > /tmp/ss3.txt 2>&1; CODES="$CODES $?"
 TOK=$(T 20 sudo sysadminctl -secureTokenStatus "$ME" 2>&1 | grep -Eo 'ENABLED|DISABLED' | head -1)
 T 90 sudo sysadminctl -addUser "$A" -fullName "Live Mac" -password "$PW" -admin > /tmp/acct1.txt 2>&1; CODES="$CODES $?"
-# permissions (TCC): Screen Recording + input for Apple's Screen Sharing parts (SIP is off on these runners)
+# permissions (TCC): Screen Recording + input (SIP is off on these runners)
 SIP=$(csrutil status 2>/dev/null | head -1 | sed 's/.*: //')
 DB="/Library/Application Support/com.apple.TCC/TCC.db"
 TCCN=0; TCCE=""
@@ -80,7 +79,7 @@ for SV in $SVCS; do
 done
 sudo killall tccd > /dev/null 2>&1
 TCCR="SIP $SIP; rows added $TCCN${TCCE:+; error: $TCCE}"
-# Apple Screen Sharing on 5900 with the screen password
+# Apple Screen Sharing on 5900 with the screen password (kept as a fallback)
 T 20 sudo dseditgroup -o create -q com.apple.access_screensharing > /tmp/grp0.txt 2>&1; CODES="$CODES $?"
 T 20 sudo dseditgroup -o edit -a "$ME" -t user com.apple.access_screensharing > /tmp/grp1.txt 2>&1; CODES="$CODES $?"
 T 20 sudo dseditgroup -o edit -a "$A" -t user com.apple.access_screensharing > /tmp/grp2.txt 2>&1; CODES="$CODES $?"
@@ -117,7 +116,7 @@ if [ -n "$MV" ]; then
   sudo killall tccd > /dev/null 2>&1; sleep 1
   ( cd /tmp && nohup "$MV" -rfbport 5901 -passwd "${PW:0:8}" > /tmp/macvnc.log 2>&1 & )
   sleep 6
-  VTEST2=$(T 45 python3 live/vnc_selftest.py "${PW:0:8}" 5901 /tmp/vnc5901.png 2>&1 | tail -1)
+  VTEST2=$(T 60 python3 live/vnc_selftest.py "${PW:0:8}" 5901 /tmp/vnc5901.png input 2>&1 | tail -1)
   L1=$(echo "$VTEST" | sed -n 's/.*LAST=\([0-9.]*\).*/\1/p'); L2=$(echo "$VTEST2" | sed -n 's/.*LAST=\([0-9.]*\).*/\1/p')
   if awk "BEGIN{exit !(${L2:-0} > 1 && ${L2:-0} > ${L1:-0})}"; then PORT=5901; fi
 else
