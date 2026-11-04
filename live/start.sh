@@ -1,7 +1,11 @@
 #!/bin/bash
 # Live Mac: turns on Screen Sharing on this runner, serves it as a web page (noVNC) and opens a public
 # HTTPS link (Cloudflare quick tunnel). Progress and the link go to s/status.txt on the live-status branch
-# and the job log. Log in with the username shown there and your password. Stop it by cancelling the run.
+# and the job log. Log in with the username shown there (runner = the Mac's own logged-in screen) and your
+# password. Stop it by cancelling the run.
+# Black-screen fix (Nov 4): the console display is kept awake (pmset + caffeinate), the screensaver and
+# lock are off, Screen Sharing access is granted to runner explicitly, and a local screenshot
+# (s/screen.png on live-status) proves whether the Mac itself is drawing.
 T() { perl -e 'alarm shift; exec @ARGV' "$@"; }
 MIN="${MINUTES:-}"; [ -z "$MIN" ] && MIN=$(cat live/minutes.txt 2>/dev/null || echo 60)
 MIN=$(( MIN > 340 ? 340 : MIN ))
@@ -10,15 +14,17 @@ else PW=$(openssl rand -hex 4); NOTE="no LIVE_MAC_PASSWORD secret set: a random 
 echo "::add-mask::$PW"
 ME=$(whoami); A=livemac; U="$ME"
 START=$(date -u '+%Y-%m-%d %H:%M'); END=$(date -u -v+${MIN}M '+%Y-%m-%d %H:%M' 2>/dev/null)
-URL=""; VNC="?"; WEB="?"; CODES=""
+URL=""; VNC="?"; WEB="?"; CODES=""; CONSOLE="?"; SHOT="none"
 publish() {
   D=$(mktemp -d); mkdir -p "$D/s"
   {
     echo "state: $1"
     echo "link: ${URL:-none}/vnc.html?autoconnect=1&resize=scale"
-    echo "username: $U (fallback: $A, same password)"
+    echo "username: $U (use this one: it is the Mac's logged-in screen; $A opens a separate session that can stay black)"
     echo "screen sharing: $VNC"
     echo "web page (local check): $WEB"
+    echo "console user: $CONSOLE"
+    echo "local screenshot: $SHOT (s/screen.png)"
     echo "step exit codes: $CODES"
     echo "minutes: $MIN"
     echo "started (UTC): $START"
@@ -28,14 +34,23 @@ publish() {
     echo "$NOTE"
     if [ -z "$LIVE_PASSWORD" ] && [ -f live/test_pub.pem ]; then echo "test: $(printf %s "$PW" | openssl pkeyutl -encrypt -pubin -inkey live/test_pub.pem 2>/dev/null | base64 | tr -d '\n')"; fi
   } > "$D/s/status.txt"
+  [ -f /tmp/screen.png ] && cp /tmp/screen.png "$D/s/screen.png"
   ( cd "$D" && git init -q && git config user.name lgx-bot && git config user.email lgx-bot@users.noreply.github.com && git checkout -q -b live-status && git add s && git commit -qm "live mac $1" && T 60 git -c credential.helper= -c core.askPass= push -q -f "https://x-access-token:${GH_TOKEN}@github.com/${REPO}.git" live-status ) > /dev/null 2>&1 || echo "publish failed ($1)"
 }
 publish starting
+# keep the console display awake for the whole session (a sleeping or locked display shows black over VNC)
+T 20 sudo pmset -a displaysleep 0 sleep 0 disksleep 0 > /tmp/pm.txt 2>&1; CODES="$CODES $?"
+nohup caffeinate -dimsu -t $(( MIN * 60 + 900 )) > /dev/null 2>&1 &
+T 10 caffeinate -u -t 3 > /dev/null 2>&1
+T 20 defaults -currentHost write com.apple.screensaver idleTime -int 0 > /tmp/ss1.txt 2>&1; CODES="$CODES $?"
+T 20 sudo defaults write /Library/Preferences/com.apple.screensaver loginWindowIdleTime -int 0 > /tmp/ss2.txt 2>&1; CODES="$CODES $?"
+T 20 sudo defaults write /Library/Preferences/com.apple.screensaver askForPassword -int 0 > /tmp/ss3.txt 2>&1; CODES="$CODES $?"
 T 90 sudo sysadminctl -addUser "$A" -fullName "Live Mac" -password "$PW" -admin > /tmp/acct1.txt 2>&1; CODES="$CODES $?"
 T 90 sudo sysadminctl -resetPasswordFor "$ME" -newPassword "$PW" -adminUser "$A" -adminPassword "$PW" > /tmp/acct2.txt 2>&1; R2=$?; CODES="$CODES $R2"
 if [ "$R2" != "0" ]; then T 30 sudo dscl . -passwd "/Users/$ME" "$PW" > /tmp/acct3.txt 2>&1; R3=$?; CODES="$CODES $R3"; [ "$R3" != "0" ] && U="$A"; fi
 K=/System/Library/CoreServices/RemoteManagement/ARDAgent.app/Contents/Resources/kickstart
-T 60 sudo "$K" -configure -allowAccessFor -allUsers -privs -all > /tmp/share1.txt 2>&1; CODES="$CODES $?"
+T 60 sudo "$K" -configure -allowAccessFor -specifiedUsers > /tmp/share0.txt 2>&1; CODES="$CODES $?"
+T 60 sudo "$K" -configure -access -on -users "$ME,$A" -privs -all > /tmp/share1.txt 2>&1; CODES="$CODES $?"
 T 60 sudo "$K" -configure -clientopts -setvnclegacy -vnclegacy yes -setvncpw -vncpw "${PW:0:8}" > /tmp/share2.txt 2>&1; CODES="$CODES $?"
 T 20 sudo defaults write /Library/Preferences/com.apple.RemoteManagement VNCLegacyConnectionsEnabled -bool true > /tmp/share2b.txt 2>&1; CODES="$CODES $?"
 T 60 sudo "$K" -restart -agent -console > /tmp/share3.txt 2>&1; CODES="$CODES $?"
@@ -45,6 +60,9 @@ T 20 sudo launchctl bootstrap system /System/Library/LaunchDaemons/com.apple.scr
 T 20 sudo launchctl kickstart -k system/com.apple.screensharing > /tmp/share7.txt 2>&1; CODES="$CODES $?"
 sleep 3
 VNC=$(T 5 nc -z localhost 5900 >/dev/null 2>&1 && echo up || echo down)
+CONSOLE=$(stat -f %Su /dev/console 2>/dev/null)
+T 10 caffeinate -u -t 2 > /dev/null 2>&1
+T 20 screencapture -x /tmp/screen.png > /tmp/shot.txt 2>&1 && SHOT="taken $(stat -f %z /tmp/screen.png 2>/dev/null) bytes" || SHOT="failed"
 publish "screen sharing step done"
 T 90 git clone -q --depth 1 https://github.com/novnc/noVNC.git /tmp/novnc; CODES="$CODES $?"
 T 90 git clone -q --depth 1 https://github.com/novnc/websockify.git /tmp/novnc/utils/websockify; CODES="$CODES $?"
@@ -58,7 +76,8 @@ tar -xzf /tmp/cf.tgz -C /tmp 2>/dev/null; CODES="$CODES $?"; chmod +x /tmp/cloud
 nohup /tmp/cloudflared tunnel --no-autoupdate --url http://localhost:6080 > /tmp/cf.log 2>&1 &
 for i in $(seq 1 60); do URL=$(grep -Eo 'https://[a-z0-9-]+\.trycloudflare\.com' /tmp/cf.log | head -1); [ -n "$URL" ] && break; sleep 2; done
 publish running
-echo "Live Mac link: ${URL}/vnc.html?autoconnect=1&resize=scale  (username: $U, screen sharing: $VNC, page: $WEB)"
-sleep $(( MIN * 60 ))
+echo "Live Mac link: ${URL}/vnc.html?autoconnect=1&resize=scale  (username: $U, screen sharing: $VNC, page: $WEB, console: $CONSOLE)"
+# nudge the display every 5 minutes so it never idles to black
+E=$(( $(date +%s) + MIN * 60 )); while [ $(date +%s) -lt $E ]; do caffeinate -u -t 1 > /dev/null 2>&1; sleep 300; done
 publish ended
 exit 0
