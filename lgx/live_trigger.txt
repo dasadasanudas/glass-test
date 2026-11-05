@@ -1,1 +1,1 @@
-self-test 14b (Nov 5): start.sh calls live/authfix.sh (allow admin rights so no password dialog appears)
+self-test 15 (Nov 5): verify live/authfix.sh output (test 14 ran the older start.sh)
