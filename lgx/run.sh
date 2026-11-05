@@ -5,8 +5,13 @@
 # A commit whose subject starts with [uiax] runs drag/uiax.sh (menus, CC, Spotlight, NC AX + icons, branch uiax-<macOS major>).
 # A commit whose subject starts with [seqanim] runs drag/anim2.sh with results on branch anim2-seq (use with lgx/runner.txt = macos-15).
 # A commit whose subject starts with [press] runs drag/press.sh (toolbar button press videos, branch press-results).
+# A commit whose subject starts with [syms] runs drag/syms.sh (SF Symbols as vector PDFs, branch syms-results).
 if git log -1 --format=%s | grep -q '^\[live\]'; then
   MINUTES=9 bash live/start.sh
+  exit 0
+fi
+if git log -1 --format=%s | grep -q '^\[syms\]'; then
+  bash drag/syms.sh
   exit 0
 fi
 if git log -1 --format=%s | grep -q '^\[uiax\]'; then
