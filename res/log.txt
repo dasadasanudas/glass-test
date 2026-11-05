@@ -1,0 +1,37 @@
+/Users/runner/work/_temp/app/wall_bands.png 4881
+/Users/runner/work/_temp/app/wall_tiles.png 16951
+/Users/runner/work/_temp/app/wall_check.png 8979
+RT=false RM=false IC=false
+
+Finder window id 40
+Finder bounds 60, 60 Finder bounds 964, 644
+ax finder_icon_light 0
+looks finder_icon done 03:10:00
+ax finder_list_light 0
+looks finder_list done 03:10:58
+ax finder_column_light 0
+looks finder_column done 03:11:38
+
+System Settings bounds 60, 60 System Settings bounds 715, 645
+ax settings_light 0
+looks settings done 03:12:52
+Notes bounds 60, 60 Notes bounds 1000, 656
+ax notes_light 0
+looks notes done 03:13:42
+Calculator bounds 60, 60 Calculator bounds 198, 350
+looks calculator done 03:14:19
+TextEdit bounds 60, 60 TextEdit bounds 964, 649
+looks textedit done 03:15:03
+Terminal bounds 60, 60 Terminal bounds 963, 651
+looks terminal done 03:15:41
+Safari bounds 60, 60 Safari bounds 1000, 688
+ax safari_light 0
+looks safari done 03:16:28
+Reminders bounds 60, 25 Reminders bounds 964, 688
+ax reminders_light 0
+looks reminders done 03:17:14
+Calendar bounds 60, 60 Calendar bounds 964, 649
+looks calendar done 03:17:54
+Clock bounds 60, 60 Clock bounds 1000, 688
+looks clock done 03:18:33
+RT=false RM=false IC=false
