@@ -1,0 +1,12 @@
+total 48440
+drwxr-xr-x  11 runner  staff      352 Nov  5 08:17 .
+drwxr-xr-x   3 runner  staff       96 Nov  5 08:17 ..
+-rw-r--r--   1 runner  staff       52 Nov  5 08:17 compile.txt
+-rw-r--r--   1 runner  staff        0 Nov  5 08:17 files.txt
+-rw-r--r--   1 runner  staff    18631 Nov  5 08:17 log.txt
+-rw-r--r--   1 runner  staff  6269464 Nov  5 08:17 press_finder_dark.mov
+-rw-r--r--   1 runner  staff  5381734 Nov  5 08:17 press_finder_light.mov
+-rw-r--r--   1 runner  staff  3694668 Nov  5 08:17 press_notes_light.mov
+-rw-r--r--   1 runner  staff  1392098 Nov  5 08:17 press_reminders_light.mov
+-rw-r--r--   1 runner  staff  5478079 Nov  5 08:17 press_safari_light.mov
+-rw-r--r--   1 runner  staff  2548106 Nov  5 08:17 press-extra.zip

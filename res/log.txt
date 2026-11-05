@@ -1,0 +1,485 @@
+/Users/runner/work/_temp/anim/wall_bands.png 4881
+/Users/runner/work/_temp/anim/wall_tiles.png 16951
+/Users/runner/work/_temp/anim/wall_check.png 8979
+RT=false RM=false IC=false
+
+Finder window id 49
+Finder bounds 60, 60 Finder bounds 964, 644
+pos apple 27 file 127 edit 170 view 217 go 261 win 314 cc 857,15 clock 951,15 dockfinder 60,729 apps 104,729
+move 520 520 t=1793866260.153
+head sourced S=/Users/runner/work/_temp/anim
+ax_finder window 60,60 buttons 14
+86 86 AXButton AXCloseButton ? 16 16 1
+109 86 AXButton AXMinimizeButton ? 16 16 1
+132 86 AXButton AXFullScreenButton ? 16 16 1
+271 86 AXButton AXSegment back 36 36 0
+308 86 AXButton AXSegment forward 36 36 0
+637 86 AXRadioButton AXSegment icon_view 37 36 1
+675 86 AXRadioButton AXSegment list_view 36 36 1
+712 86 AXRadioButton AXSegment column_view 36 36 1
+749 86 AXRadioButton AXSegment gallery_view 36 36 1
+808 86 AXMenuButton - Group 58 52 1
+865 86 AXButton - Share 41 52 0
+906 86 AXButton - Edit_Tags 40 52 0
+946 86 AXMenuButton - Action 41 52 1
+997 86 AXButton AXSearchField Search 39 38 1
+rec press_finder_light start 1793866264.098 len 74 el 36
+ev 1793866265.719 lights hover
+glide move 520 430 > 86 86 300ms t=1793866265.734
+glide move 520 430 > 86 86 260ms t=1793866267.012
+ev 1793866267.983 pressoff close
+down 86 86 t=1793866268.006
+glide drag 86 86 > 86 196 320ms t=1793866268.482
+up 86 196 t=1793866269.083
+ev 1793866269.088 releaseoff close
+glide move 520 430 > 109 86 260ms t=1793866270.079
+ev 1793866271.045 pressoff minimize
+down 109 86 t=1793866271.063
+glide drag 109 86 > 109 196 320ms t=1793866271.554
+up 109 196 t=1793866272.220
+ev 1793866272.229 releaseoff minimize
+glide move 520 430 > 132 86 260ms t=1793866273.214
+ev 1793866274.161 pressoff zoom
+down 132 86 t=1793866274.199
+glide drag 132 86 > 132 196 320ms t=1793866274.680
+up 132 196 t=1793866275.295
+ev 1793866275.303 releaseoff zoom
+glide move 520 430 > 271 86 260ms t=1793866276.265
+ev 1793866277.235 press back
+down 271 86 t=1793866277.257
+up 271 86 t=1793866277.755
+ev 1793866277.765 release back
+glide move 271 86 > 520 430 220ms t=1793866279.983
+glide move 520 430 > 308 86 260ms t=1793866280.671
+ev 1793866281.607 press forward
+down 308 86 t=1793866281.634
+up 308 86 t=1793866282.146
+ev 1793866282.152 release forward
+glide move 308 86 > 520 430 220ms t=1793866284.339
+glide move 520 430 > 637 86 260ms t=1793866285.057
+ev 1793866285.971 press icon_view
+down 637 86 t=1793866285.993
+up 637 86 t=1793866286.484
+ev 1793866286.494 release icon_view
+glide move 637 86 > 520 430 220ms t=1793866288.700
+glide move 520 430 > 675 86 260ms t=1793866289.361
+ev 1793866290.260 press list_view
+down 675 86 t=1793866290.292
+up 675 86 t=1793866290.830
+ev 1793866290.837 release list_view
+glide move 675 86 > 520 430 220ms t=1793866293.061
+glide move 520 430 > 712 86 260ms t=1793866293.783
+ev 1793866294.661 press column_view
+down 712 86 t=1793866294.681
+up 712 86 t=1793866295.221
+ev 1793866295.226 release column_view
+glide move 712 86 > 520 430 220ms t=1793866297.453
+glide move 520 430 > 749 86 260ms t=1793866298.145
+ev 1793866299.040 press gallery_view
+down 749 86 t=1793866299.061
+up 749 86 t=1793866299.584
+ev 1793866299.592 release gallery_view
+glide move 749 86 > 520 430 220ms t=1793866301.847
+glide move 520 430 > 808 86 260ms t=1793866302.491
+ev 1793866303.395 press Group
+down 808 86 t=1793866303.427
+up 808 86 t=1793866303.949
+ev 1793866303.969 release Group
+glide move 808 86 > 520 430 220ms t=1793866306.113
+glide move 520 430 > 865 86 260ms t=1793866306.855
+ev 1793866307.787 press Share
+down 865 86 t=1793866307.816
+up 865 86 t=1793866308.331
+ev 1793866308.340 release Share
+glide move 865 86 > 520 430 220ms t=1793866310.757
+glide move 520 430 > 906 86 260ms t=1793866311.431
+ev 1793866312.385 press Edit_Tags
+down 906 86 t=1793866312.420
+up 906 86 t=1793866312.983
+ev 1793866313.092 release Edit_Tags
+glide move 906 86 > 520 430 220ms t=1793866315.684
+glide move 520 430 > 946 86 260ms t=1793866316.398
+ev 1793866317.286 press Action
+down 946 86 t=1793866317.303
+up 946 86 t=1793866317.831
+ev 1793866317.842 release Action
+glide move 946 86 > 520 430 220ms t=1793866320.219
+glide move 520 430 > 997 86 260ms t=1793866320.907
+ev 1793866321.896 press Search
+down 997 86 t=1793866321.913
+up 997 86 t=1793866322.436
+ev 1793866322.454 release Search
+glide move 997 86 > 520 430 220ms t=1793866324.568
+glide move 520 430 > 637 86 260ms t=1793866325.291
+ev 1793866326.175 pressoff icon_view
+down 637 86 t=1793866326.196
+glide drag 637 86 > 637 196 320ms t=1793866326.631
+up 637 196 t=1793866327.274
+ev 1793866327.281 releaseoff icon_view
+rec press_finder_light exit 0 1793866338.996
+recwait done el 111
+Safari bounds 60, 60 Safari bounds 964, 644
+ax_safari window 60,60 buttons 11
+86 86 AXButton AXCloseButton ? 16 16 1
+109 86 AXButton AXMinimizeButton ? 16 16 1
+132 86 AXButton AXFullScreenButton ? 16 16 1
+176 86 AXButton - show_sidebar 42 38 1
+205 86 AXMenuButton - Tab_Group_picker 20 38 1
+249 86 AXButton AXSegment Go_back 36 36 0
+286 86 AXButton AXSegment Go_forward 36 36 0
+451 86 AXButton - Show_Search_Menu 24 30 1
+919 86 AXButton - Share 41 52 0
+958 86 AXButton - New_Tab 37 52 1
+998 86 AXButton - Tab_Overview 43 52 1
+rec press_safari_light start 1793866360.396 len 62 el 132
+ev 1793866362.037 lights hover
+glide move 520 430 > 86 86 300ms t=1793866362.045
+glide move 520 430 > 86 86 260ms t=1793866363.292
+ev 1793866364.261 pressoff close
+down 86 86 t=1793866364.297
+glide drag 86 86 > 86 196 320ms t=1793866364.745
+up 86 196 t=1793866365.364
+ev 1793866365.373 releaseoff close
+glide move 520 430 > 109 86 260ms t=1793866366.325
+ev 1793866367.246 pressoff minimize
+down 109 86 t=1793866367.266
+glide drag 109 86 > 109 196 320ms t=1793866367.695
+up 109 196 t=1793866368.415
+ev 1793866368.446 releaseoff minimize
+glide move 520 430 > 132 86 260ms t=1793866369.388
+ev 1793866370.298 pressoff zoom
+down 132 86 t=1793866370.321
+glide drag 132 86 > 132 196 320ms t=1793866370.809
+up 132 196 t=1793866371.472
+ev 1793866371.479 releaseoff zoom
+glide move 520 430 > 176 86 260ms t=1793866372.445
+ev 1793866373.345 press show_sidebar
+down 176 86 t=1793866373.359
+up 176 86 t=1793866373.892
+ev 1793866373.900 release show_sidebar
+glide move 176 86 > 520 430 220ms t=1793866376.011
+click 176 86 hold 80 t=1793866376.758
+glide move 520 430 > 205 86 260ms t=1793866377.701
+ev 1793866378.659 press Tab_Group_picker
+down 205 86 t=1793866378.681
+up 205 86 t=1793866379.234
+ev 1793866379.240 release Tab_Group_picker
+glide move 205 86 > 520 430 220ms t=1793866381.384
+glide move 520 430 > 249 86 260ms t=1793866382.100
+ev 1793866383.018 press Go_back
+down 249 86 t=1793866383.039
+up 249 86 t=1793866383.588
+ev 1793866383.595 release Go_back
+glide move 249 86 > 520 430 220ms t=1793866385.898
+glide move 520 430 > 286 86 260ms t=1793866386.541
+ev 1793866387.429 press Go_forward
+down 286 86 t=1793866387.456
+up 286 86 t=1793866387.937
+ev 1793866387.949 release Go_forward
+glide move 286 86 > 520 430 220ms t=1793866390.135
+glide move 520 430 > 451 86 260ms t=1793866390.798
+ev 1793866391.711 press Show_Search_Menu
+down 451 86 t=1793866391.725
+up 451 86 t=1793866392.265
+ev 1793866392.274 release Show_Search_Menu
+glide move 451 86 > 520 430 220ms t=1793866394.461
+glide move 520 430 > 919 86 260ms t=1793866395.128
+ev 1793866396.084 press Share
+down 919 86 t=1793866396.101
+up 919 86 t=1793866396.594
+ev 1793866396.602 release Share
+glide move 919 86 > 520 430 220ms t=1793866398.822
+glide move 520 430 > 958 86 260ms t=1793866399.541
+ev 1793866400.461 press New_Tab
+down 958 86 t=1793866400.488
+up 958 86 t=1793866401.053
+ev 1793866401.060 release New_Tab
+glide move 958 86 > 520 430 220ms t=1793866403.315
+glide move 520 430 > 998 86 260ms t=1793866404.024
+ev 1793866404.986 press Tab_Overview
+down 998 86 t=1793866405.010
+up 998 86 t=1793866405.502
+ev 1793866405.511 release Tab_Overview
+glide move 998 86 > 520 430 220ms t=1793866407.860
+glide move 520 430 > 176 86 260ms t=1793866408.592
+ev 1793866409.481 pressoff show_sidebar
+down 176 86 t=1793866409.510
+glide drag 176 86 > 176 196 320ms t=1793866409.933
+up 176 196 t=1793866410.580
+ev 1793866410.587 releaseoff show_sidebar
+rec press_safari_light exit 0 1793866423.342
+recwait done el 195
+Notes bounds 60, 60 Notes bounds 964, 644
+ax_notes window 60,60 buttons 14
+86 86 AXButton AXCloseButton ? 16 16 1
+109 86 AXButton AXMinimizeButton ? 16 16 1
+132 86 AXButton AXFullScreenButton ? 16 16 1
+222 86 AXButton - Add_Folder 44 52 1
+266 86 AXButton - Folders 44 52 1
+542 86 AXMenuButton - View_Options 44 52 1
+595 86 AXButton - New_Note 45 52 1
+687 86 AXButton - Format 45 52 0
+730 86 AXButton - Checklist 40 52 0
+770 86 AXButton - Table 41 52 0
+811 86 AXMenuButton - Media 41 52 0
+901 86 AXButton - Share 38 38 0
+945 86 AXMenuButton - More 38 38 1
+997 86 AXButton AXSearchField Search 39 38 1
+rec press_notes_light start 1793866444.609 len 74 el 216
+ev 1793866446.216 lights hover
+glide move 520 430 > 86 86 300ms t=1793866446.224
+glide move 520 430 > 86 86 260ms t=1793866447.449
+ev 1793866448.351 pressoff close
+down 86 86 t=1793866448.368
+glide drag 86 86 > 86 196 320ms t=1793866448.832
+up 86 196 t=1793866449.465
+ev 1793866449.475 releaseoff close
+glide move 520 430 > 109 86 260ms t=1793866450.450
+ev 1793866451.330 pressoff minimize
+down 109 86 t=1793866451.361
+glide drag 109 86 > 109 196 320ms t=1793866451.840
+up 109 196 t=1793866452.464
+ev 1793866452.474 releaseoff minimize
+glide move 520 430 > 132 86 260ms t=1793866453.420
+ev 1793866454.387 pressoff zoom
+down 132 86 t=1793866454.410
+glide drag 132 86 > 132 196 320ms t=1793866454.889
+up 132 196 t=1793866455.508
+ev 1793866455.516 releaseoff zoom
+glide move 520 430 > 222 86 260ms t=1793866456.446
+ev 1793866457.381 press Add_Folder
+down 222 86 t=1793866457.403
+up 222 86 t=1793866457.917
+ev 1793866457.925 release Add_Folder
+glide move 222 86 > 520 430 220ms t=1793866460.126
+glide move 520 430 > 266 86 260ms t=1793866460.770
+ev 1793866461.727 press Folders
+down 266 86 t=1793866461.749
+up 266 86 t=1793866462.279
+ev 1793866462.287 release Folders
+glide move 266 86 > 520 430 220ms t=1793866464.467
+glide move 520 430 > 542 86 260ms t=1793866465.178
+ev 1793866466.076 press View_Options
+down 542 86 t=1793866466.105
+up 542 86 t=1793866466.636
+ev 1793866466.644 release View_Options
+glide move 542 86 > 520 430 220ms t=1793866468.775
+glide move 520 430 > 595 86 260ms t=1793866469.433
+ev 1793866470.391 press New_Note
+down 595 86 t=1793866470.417
+up 595 86 t=1793866470.907
+ev 1793866470.913 release New_Note
+glide move 595 86 > 520 430 220ms t=1793866473.010
+glide move 520 430 > 687 86 260ms t=1793866473.723
+ev 1793866474.673 press Format
+down 687 86 t=1793866474.694
+up 687 86 t=1793866475.232
+ev 1793866475.237 release Format
+glide move 687 86 > 520 430 220ms t=1793866477.310
+glide move 520 430 > 730 86 260ms t=1793866477.976
+ev 1793866478.935 press Checklist
+down 730 86 t=1793866478.957
+up 730 86 t=1793866479.442
+ev 1793866479.447 release Checklist
+glide move 730 86 > 520 430 220ms t=1793866481.662
+glide move 520 430 > 770 86 260ms t=1793866482.370
+ev 1793866483.347 press Table
+down 770 86 t=1793866483.369
+up 770 86 t=1793866483.868
+ev 1793866483.874 release Table
+glide move 770 86 > 520 430 220ms t=1793866486.202
+glide move 520 430 > 811 86 260ms t=1793866486.910
+ev 1793866487.829 press Media
+down 811 86 t=1793866487.849
+up 811 86 t=1793866488.400
+ev 1793866488.413 release Media
+glide move 811 86 > 520 430 220ms t=1793866490.769
+glide move 520 430 > 901 86 260ms t=1793866491.473
+ev 1793866492.368 press Share
+down 901 86 t=1793866492.398
+up 901 86 t=1793866492.880
+ev 1793866492.896 release Share
+glide move 901 86 > 520 430 220ms t=1793866495.151
+glide move 520 430 > 945 86 260ms t=1793866495.826
+ev 1793866496.739 press More
+down 945 86 t=1793866496.760
+up 945 86 t=1793866497.323
+ev 1793866497.347 release More
+glide move 945 86 > 520 430 220ms t=1793866499.633
+glide move 520 430 > 997 86 260ms t=1793866500.302
+ev 1793866501.230 press Search
+down 997 86 t=1793866501.251
+up 997 86 t=1793866501.806
+ev 1793866501.813 release Search
+glide move 997 86 > 520 430 220ms t=1793866504.308
+glide move 520 430 > 222 86 260ms t=1793866504.976
+ev 1793866505.880 pressoff Add_Folder
+down 222 86 t=1793866505.903
+glide drag 222 86 > 222 196 320ms t=1793866506.350
+up 222 196 t=1793866507.033
+ev 1793866507.043 releaseoff Add_Folder
+rec press_notes_light exit 0 1793866519.110
+recwait done el 291
+Reminders bounds 60, 30 Reminders bounds 964, 644
+ax_reminders window 60,30 buttons 6
+86 56 AXButton AXCloseButton ? 16 16 0
+109 56 AXButton AXMinimizeButton ? 16 16 1
+132 56 AXButton AXZoomButton ? 16 16 1
+362 56 AXButton - Add_List 44 52 0
+406 56 AXButton - Sidebar 44 52 0
+766 56 AXButton - Add_Reminder 44 52 0
+rec press_reminders_light start 1793866538.719 len 42 el 310
+ev 1793866540.334 lights hover
+glide move 520 430 > 86 56 300ms t=1793866540.343
+glide move 520 430 > 86 56 260ms t=1793866541.648
+ev 1793866542.579 pressoff close
+down 86 56 t=1793866542.609
+glide drag 86 56 > 86 166 320ms t=1793866543.074
+up 86 166 t=1793866543.742
+ev 1793866543.754 releaseoff close
+glide move 520 430 > 109 56 260ms t=1793866544.713
+ev 1793866545.603 pressoff minimize
+down 109 56 t=1793866545.627
+glide drag 109 56 > 109 166 320ms t=1793866546.075
+up 109 166 t=1793866546.725
+ev 1793866546.731 releaseoff minimize
+glide move 520 430 > 132 56 260ms t=1793866547.651
+ev 1793866548.581 pressoff zoom
+down 132 56 t=1793866548.594
+glide drag 132 56 > 132 166 320ms t=1793866549.014
+up 132 166 t=1793866549.635
+ev 1793866549.641 releaseoff zoom
+glide move 520 430 > 362 56 260ms t=1793866550.558
+ev 1793866551.443 press Add_List
+down 362 56 t=1793866551.457
+up 362 56 t=1793866551.965
+ev 1793866551.970 release Add_List
+glide move 362 56 > 520 430 220ms t=1793866554.208
+glide move 520 430 > 406 56 260ms t=1793866554.902
+ev 1793866555.790 press Sidebar
+down 406 56 t=1793866555.813
+up 406 56 t=1793866556.367
+ev 1793866556.373 release Sidebar
+glide move 406 56 > 520 430 220ms t=1793866558.401
+click 406 56 hold 80 t=1793866559.179
+glide move 520 430 > 766 56 260ms t=1793866560.207
+ev 1793866561.109 press Add_Reminder
+down 766 56 t=1793866561.130
+up 766 56 t=1793866561.642
+ev 1793866561.647 release Add_Reminder
+glide move 766 56 > 520 430 220ms t=1793866563.783
+rec press_reminders_light exit 0 1793866581.216
+recwait done el 353
+32:36: execution error: Reminders got an error: User canceled. (-128)
+ax_finder_dark window 60,60 buttons 14
+86 86 AXButton AXCloseButton ? 16 16 1
+109 86 AXButton AXMinimizeButton ? 16 16 1
+132 86 AXButton AXFullScreenButton ? 16 16 1
+271 86 AXButton AXSegment back 36 36 0
+308 86 AXButton AXSegment forward 36 36 0
+637 86 AXRadioButton AXSegment icon_view 37 36 1
+675 86 AXRadioButton AXSegment list_view 36 36 1
+712 86 AXRadioButton AXSegment column_view 36 36 1
+749 86 AXRadioButton AXSegment gallery_view 36 36 1
+808 86 AXMenuButton - Group 58 52 1
+865 86 AXButton - Share 41 52 1
+906 86 AXButton - Add_Tags 40 52 1
+946 86 AXMenuButton - Action 41 52 1
+997 86 AXButton AXSearchField Search 39 38 1
+rec press_finder_dark start 1793866589.888 len 74 el 361
+ev 1793866591.492 lights hover
+glide move 520 430 > 86 86 300ms t=1793866591.499
+glide move 520 430 > 86 86 260ms t=1793866592.736
+ev 1793866593.699 pressoff close
+down 86 86 t=1793866593.719
+glide drag 86 86 > 86 196 320ms t=1793866594.198
+up 86 196 t=1793866594.820
+ev 1793866594.828 releaseoff close
+glide move 520 430 > 109 86 260ms t=1793866595.764
+ev 1793866596.654 pressoff minimize
+down 109 86 t=1793866596.679
+glide drag 109 86 > 109 196 320ms t=1793866597.156
+up 109 196 t=1793866597.841
+ev 1793866597.845 releaseoff minimize
+glide move 520 430 > 132 86 260ms t=1793866598.833
+ev 1793866599.747 pressoff zoom
+down 132 86 t=1793866599.772
+glide drag 132 86 > 132 196 320ms t=1793866600.259
+up 132 196 t=1793866600.930
+ev 1793866600.935 releaseoff zoom
+glide move 520 430 > 271 86 260ms t=1793866601.881
+ev 1793866602.824 press back
+down 271 86 t=1793866602.846
+up 271 86 t=1793866603.368
+ev 1793866603.373 release back
+glide move 271 86 > 520 430 220ms t=1793866605.495
+glide move 520 430 > 308 86 260ms t=1793866606.213
+ev 1793866607.091 press forward
+down 308 86 t=1793866607.110
+up 308 86 t=1793866607.584
+ev 1793866607.590 release forward
+glide move 308 86 > 520 430 220ms t=1793866609.773
+glide move 520 430 > 637 86 260ms t=1793866610.475
+ev 1793866611.376 press icon_view
+down 637 86 t=1793866611.392
+up 637 86 t=1793866611.884
+ev 1793866611.890 release icon_view
+glide move 637 86 > 520 430 220ms t=1793866613.949
+glide move 520 430 > 675 86 260ms t=1793866614.627
+ev 1793866615.578 press list_view
+down 675 86 t=1793866615.602
+up 675 86 t=1793866616.107
+ev 1793866616.115 release list_view
+glide move 675 86 > 520 430 220ms t=1793866618.269
+glide move 520 430 > 712 86 260ms t=1793866618.943
+ev 1793866619.828 press column_view
+down 712 86 t=1793866619.854
+up 712 86 t=1793866620.344
+ev 1793866620.352 release column_view
+glide move 712 86 > 520 430 220ms t=1793866622.484
+glide move 520 430 > 749 86 260ms t=1793866623.138
+ev 1793866624.082 press gallery_view
+down 749 86 t=1793866624.101
+up 749 86 t=1793866624.594
+ev 1793866624.604 release gallery_view
+glide move 749 86 > 520 430 220ms t=1793866626.713
+glide move 520 430 > 808 86 260ms t=1793866627.395
+ev 1793866628.289 press Group
+down 808 86 t=1793866628.316
+up 808 86 t=1793866628.840
+ev 1793866628.847 release Group
+glide move 808 86 > 520 430 220ms t=1793866630.922
+glide move 520 430 > 865 86 260ms t=1793866631.604
+ev 1793866632.554 press Share
+down 865 86 t=1793866632.581
+up 865 86 t=1793866633.127
+ev 1793866633.135 release Share
+glide move 865 86 > 520 430 220ms t=1793866635.246
+glide move 520 430 > 906 86 260ms t=1793866635.924
+ev 1793866636.885 press Add_Tags
+down 906 86 t=1793866636.922
+up 906 86 t=1793866637.426
+ev 1793866637.433 release Add_Tags
+glide move 906 86 > 520 430 220ms t=1793866639.574
+glide move 520 430 > 946 86 260ms t=1793866640.270
+ev 1793866641.188 press Action
+down 946 86 t=1793866641.204
+up 946 86 t=1793866641.728
+ev 1793866641.741 release Action
+glide move 946 86 > 520 430 220ms t=1793866643.852
+glide move 520 430 > 997 86 260ms t=1793866644.533
+ev 1793866645.430 press Search
+down 997 86 t=1793866645.450
+up 997 86 t=1793866645.973
+ev 1793866645.983 release Search
+glide move 997 86 > 520 430 220ms t=1793866648.173
+glide move 520 430 > 637 86 260ms t=1793866648.833
+ev 1793866649.774 pressoff icon_view
+down 637 86 t=1793866649.796
+glide drag 637 86 > 637 196 320ms t=1793866650.226
+up 637 196 t=1793866650.843
+ev 1793866650.849 releaseoff icon_view
+rec press_finder_dark exit 0 1793866664.357
+recwait done el 436
+RT=false RM=false IC=false
+end el 440
