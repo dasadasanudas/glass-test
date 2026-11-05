@@ -1,0 +1,105 @@
+/Users/runner/work/_temp/uiax/wall_bands.png 4881
+/Users/runner/work/_temp/uiax/wall_tiles.png 16951
+/Users/runner/work/_temp/uiax/wall_check.png 8979
+RT=false RM=false
+
+menu bar item Apple of menu bar 1 of application process Finder
+menu Apple_light 03:30:35
+menu bar item Finder of menu bar 1 of application process Finder
+menu Finder_light 03:30:39
+menu bar item File of menu bar 1 of application process Finder
+menu File_light 03:30:43
+menu bar item Edit of menu bar 1 of application process Finder
+menu Edit_light 03:30:47
+menu bar item View of menu bar 1 of application process Finder
+menu View_light 03:30:52
+menu bar item Go of menu bar 1 of application process Finder
+menu Go_light 03:30:56
+menu bar item Window of menu bar 1 of application process Finder
+menu Window_light 03:31:00
+menu bar item Help of menu bar 1 of application process Finder
+menu Help_light 03:31:05
+Finder window id 58
+menu bar item File of menu bar 1 of application process Finder
+menu File_win_light 03:31:12
+menu bar item View of menu bar 1 of application process Finder
+menu View_win_light 03:31:16
+menu bar item Go of menu bar 1 of application process Finder
+menu Go_win_light 03:31:21
+
+menu bar item 2 of menu bar 1 of application process ControlCenter
+menu bar item 1 of menu bar 1 of application process ControlCenter
+mode light done 03:31:41
+
+menu bar item Apple of menu bar 1 of application process Finder
+menu Apple_dark 03:31:50
+menu bar item Finder of menu bar 1 of application process Finder
+menu Finder_dark 03:31:54
+menu bar item File of menu bar 1 of application process Finder
+menu File_dark 03:31:58
+menu bar item Edit of menu bar 1 of application process Finder
+menu Edit_dark 03:32:02
+menu bar item View of menu bar 1 of application process Finder
+menu View_dark 03:32:06
+menu bar item Go of menu bar 1 of application process Finder
+menu Go_dark 03:32:10
+menu bar item Window of menu bar 1 of application process Finder
+menu Window_dark 03:32:14
+menu bar item Help of menu bar 1 of application process Finder
+menu Help_dark 03:32:18
+Finder window id 91
+menu bar item File of menu bar 1 of application process Finder
+menu File_win_dark 03:32:25
+menu bar item View of menu bar 1 of application process Finder
+menu View_win_dark 03:32:29
+menu bar item Go of menu bar 1 of application process Finder
+menu Go_win_dark 03:32:33
+
+menu bar item 2 of menu bar 1 of application process ControlCenter
+menu bar item 1 of menu bar 1 of application process ControlCenter
+mode dark done 03:32:49
+total 592
+drwxr-xr-x  21 runner  staff    672 Nov  5 03:31 .
+drwxr-xr-x  11 runner  staff    352 Nov  5 03:30 ..
+-rw-r--r--   1 runner  staff    314 Nov  5 03:30 bar_ControlCenter.txt
+-rw-r--r--   1 runner  staff   3341 Nov  5 03:30 bar_Spotlight.txt
+-rw-r--r--   1 runner  staff     56 Nov  5 03:30 bar_SystemUIServer.txt
+-rw-r--r--   1 runner  staff   1692 Nov  5 03:31 cc.txt
+-rw-r--r--   1 runner  staff   1023 Nov  5 03:30 finder_app.txt
+-rw-r--r--   1 runner  staff  23828 Nov  5 03:31 finder_window.txt
+-rw-r--r--   1 runner  staff  17315 Nov  5 03:30 menu_Apple_light.txt
+-rw-r--r--   1 runner  staff  17349 Nov  5 03:30 menu_Edit_light.txt
+-rw-r--r--   1 runner  staff  17487 Nov  5 03:30 menu_File_light.txt
+-rw-r--r--   1 runner  staff  22175 Nov  5 03:31 menu_File_win_light.txt
+-rw-r--r--   1 runner  staff  17304 Nov  5 03:30 menu_Finder_light.txt
+-rw-r--r--   1 runner  staff  17381 Nov  5 03:30 menu_Go_light.txt
+-rw-r--r--   1 runner  staff  22111 Nov  5 03:31 menu_Go_win_light.txt
+-rw-r--r--   1 runner  staff  17276 Nov  5 03:31 menu_Help_light.txt
+-rw-r--r--   1 runner  staff  17394 Nov  5 03:30 menu_View_light.txt
+-rw-r--r--   1 runner  staff  22124 Nov  5 03:31 menu_View_win_light.txt
+-rw-r--r--   1 runner  staff  17337 Nov  5 03:30 menu_Window_light.txt
+-rw-r--r--   1 runner  staff  10776 Nov  5 03:31 spot.txt
+-rw-r--r--   1 runner  staff   7057 Nov  5 03:31 spot0.txt
+       4 /Users/runner/work/_temp/uiax/ax/bar_ControlCenter.txt
+      54 /Users/runner/work/_temp/uiax/ax/bar_Spotlight.txt
+       1 /Users/runner/work/_temp/uiax/ax/bar_SystemUIServer.txt
+      22 /Users/runner/work/_temp/uiax/ax/cc.txt
+      20 /Users/runner/work/_temp/uiax/ax/finder_app.txt
+     395 /Users/runner/work/_temp/uiax/ax/finder_window.txt
+     278 /Users/runner/work/_temp/uiax/ax/menu_Apple_light.txt
+     278 /Users/runner/work/_temp/uiax/ax/menu_Edit_light.txt
+     278 /Users/runner/work/_temp/uiax/ax/menu_File_light.txt
+     359 /Users/runner/work/_temp/uiax/ax/menu_File_win_light.txt
+     278 /Users/runner/work/_temp/uiax/ax/menu_Finder_light.txt
+     278 /Users/runner/work/_temp/uiax/ax/menu_Go_light.txt
+     360 /Users/runner/work/_temp/uiax/ax/menu_Go_win_light.txt
+     278 /Users/runner/work/_temp/uiax/ax/menu_Help_light.txt
+     278 /Users/runner/work/_temp/uiax/ax/menu_View_light.txt
+     360 /Users/runner/work/_temp/uiax/ax/menu_View_win_light.txt
+     278 /Users/runner/work/_temp/uiax/ax/menu_Window_light.txt
+     176 /Users/runner/work/_temp/uiax/ax/spot.txt
+     114 /Users/runner/work/_temp/uiax/ax/spot0.txt
+    4089 total
+ok Network
+ok Computer
+ok Folder2
