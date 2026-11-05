@@ -1,0 +1,79 @@
+/Users/runner/work/_temp/anim/wall_bands.png 4881
+/Users/runner/work/_temp/anim/wall_tiles.png 16951
+/Users/runner/work/_temp/anim/wall_check.png 8979
+RT=false RM=false IC=false
+
+Finder window id 39
+Finder bounds 60, 60 Finder bounds 964, 644
+pos apple 27 file 127 edit 170 view 217 go 261 win 314 cc 861,12 clock 951,12 dockfinder 63,734 apps ,
+move 520 520 t=1793854754.764
+head sourced S=/Users/runner/work/_temp/anim
+rec menubar_light start 1793854754.837 len 26 el 28
+ev 1793854756.431 click File
+click 127 12 hold 90 t=1793854756.504
+ev 1793854758.053 glide File to Edit
+glide move 127 12 > 170 12 200ms t=1793854758.062
+ev 1793854759.357 escape
+ev 1793854761.277 click View
+click 217 12 hold 90 t=1793854761.346
+ev 1793854764.774 hover as List
+glide move 217 12 > 293 63 300ms t=1793854764.779
+ev 1793854765.625 choose as List
+click 293 63 hold 70 t=1793854765.714
+ev 1793854767.383 click Go then outside
+click 261 12 hold 90 t=1793854767.499
+ev 1793854768.711 outside
+click 30 430 hold 60 t=1793854768.766
+ev 1793854770.212 Apple menu
+click 27 12 hold 90 t=1793854770.333
+ev 1793854771.679 apple escape
+rec menubar_light exit 0 1793854783.013
+recwait done el 57
+rec sys_light start 1793854785.200 len 22 el 59
+ev 1793854786.779 CC open
+click 861 12 hold 90 t=1793854786.912
+ev 1793854788.561 CC close
+click 861 12 hold 90 t=1793854788.610
+ev 1793854790.112 Spotlight open
+ev 1793854791.813 Spotlight close
+ev 1793854794.632 NC open
+click 951 12 hold 90 t=1793854794.878
+ev 1793854796.573 NC close
+click 951 12 hold 90 t=1793854796.686
+rec sys_light exit 0 1793854807.631
+recwait done el 81
+rec win_light start 1793854808.876 len 16 el 82
+ev 1793854810.470 new window
+ev 1793854813.131 close window cmd-w
+ev 1793854815.776 minimize
+click 106 86 hold 90 t=1793854815.853
+ev 1793854819.772 restore
+click 919 735 hold 90 t=1793854819.856
+rec win_light exit 0 1793854825.302
+recwait done el 99
+rec ctl_light start 1793854833.272 len 24 el 107
+ev 1793854834.843 seg1 click 2nd
+click 165 176 hold 80 t=1793854834.966
+ev 1793854836.202 seg1 click 3rd
+click 209 176 hold 80 t=1793854836.346
+ev 1793854837.552 suiseg click 3rd
+click 709 175 hold 80 t=1793854837.638
+ev 1793854838.789 slider click 85
+click 297 258 hold 80 t=1793854838.848
+ev 1793854840.076 slider click 15
+click 143 258 hold 80 t=1793854840.195
+ev 1793854841.324 switch on
+click 121 386 hold 80 t=1793854841.420
+ev 1793854842.631 switch off
+click 121 386 hold 80 t=1793854842.688
+ev 1793854843.910 pop open
+click 178 456 hold 80 t=1793854844.030
+ev 1793854845.435 pop esc
+ev 1793854847.276 pop open2
+click 178 456 hold 80 t=1793854847.340
+ev 1793854848.557 pop choose
+click 178 500 hold 70 t=1793854848.686
+rec ctl_light exit 0 1793854857.689
+recwait done el 131
+RT=false RM=false IC=false
+end el 132

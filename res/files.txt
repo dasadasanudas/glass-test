@@ -1,0 +1,11 @@
+total 18176
+drwxr-xr-x  10 runner  staff      320 Nov  5 05:00 .
+drwxr-xr-x   3 runner  staff       96 Nov  5 05:00 ..
+-rw-r--r--   1 runner  staff  3823851 Nov  5 05:00 anim2-extra.zip
+-rw-r--r--   1 runner  staff       38 Nov  5 05:00 compile.txt
+-rw-r--r--   1 runner  staff   704013 Nov  5 05:00 ctl_light.mov
+-rw-r--r--   1 runner  staff        0 Nov  5 05:00 files.txt
+-rw-r--r--   1 runner  staff     2766 Nov  5 05:00 log.txt
+-rw-r--r--   1 runner  staff  1591059 Nov  5 05:00 menubar_light.mov
+-rw-r--r--   1 runner  staff   678568 Nov  5 05:00 sys_light.mov
+-rw-r--r--   1 runner  staff  2492310 Nov  5 05:00 win_light.mov
