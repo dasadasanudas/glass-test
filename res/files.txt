@@ -1,0 +1,9 @@
+total 93408
+drwxr-xr-x  8 runner  staff       256 Nov  5 02:09 .
+drwxr-xr-x  3 runner  staff        96 Nov  5 02:08 ..
+-rw-r--r--  1 runner  staff        46 Nov  5 02:09 compile.txt
+-rw-r--r--  1 runner  staff    759481 Nov  5 02:09 dockmag_def.mov
+-rw-r--r--  1 runner  staff  46926339 Nov  5 02:09 dockmag.zip
+-rw-r--r--  1 runner  staff         0 Nov  5 02:09 files.txt
+-rw-r--r--  1 runner  staff       843 Nov  5 02:09 log.txt
+-rw-r--r--  1 runner  staff       367 Nov  5 02:09 settings.txt

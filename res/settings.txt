@@ -1,0 +1,11 @@
+== def
+1
+2026-11-05 02:04:19.990 defaults[3020:13713] 
+The domain/default pair of (com.apple.dock, largesize) does not exist
+2026-11-05 02:04:19.999 defaults[3021:13716] 
+The domain/default pair of (com.apple.dock, tilesize) does not exist
+== l80
+1
+80
+2026-11-05 02:06:55.417 defaults[7860:27325] 
+The domain/default pair of (com.apple.dock, tilesize) does not exist

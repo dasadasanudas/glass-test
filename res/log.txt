@@ -1,0 +1,23 @@
+/Users/runner/work/_temp/dm/wall_bands.png 4881
+/Users/runner/work/_temp/dm/wall_tiles.png 16951
+/Users/runner/work/_temp/dm/wall_check.png 8979
+
+RT=false RM=false IC=false
+move 512 300 t=1793844253.772
+def dock list frame 35 702 954 56 pid 2813
+sweep def y 734 from 27 to 997 step 4 start 1793844263.479
+sweep def frames 243 end 1793844385.932
+vid enter 1793844398.158
+glide move 321 574 > 321 734 250ms t=1793844398.179
+vid glide 1793844400.160
+glide move 321 734 > 702 734 600ms t=1793844400.172
+vid leave 1793844402.453
+glide move 702 734 > 702 534 200ms t=1793844402.463
+vid jump 1793844404.606
+move 65 734 t=1793844404.638
+vid out 1793844406.345
+move 512 300 t=1793844406.376
+l80 dock list frame 35 702 954 56 pid 7768
+sweep l80 y 734 from 27 to 997 step 4 start 1793844418.568
+sweep l80 frames 243 end 1793844537.779
+end 1793844539.134
