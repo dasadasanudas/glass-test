@@ -3,6 +3,7 @@
 # A commit whose subject starts with [drag] runs drag/run.sh instead (results on the drag-results branch).
 # A commit whose subject starts with [live] runs a 9-minute self-test of live/start.sh (status on live-status).
 # A commit whose subject starts with [uiax] runs drag/uiax.sh (menus, CC, Spotlight, NC AX + icons, branch uiax-<macOS major>).
+# A commit whose subject starts with [seqanim] runs drag/anim2.sh with results on branch anim2-seq (use with lgx/runner.txt = macos-15).
 if git log -1 --format=%s | grep -q '^\[live\]'; then
   MINUTES=9 bash live/start.sh
   exit 0
@@ -10,6 +11,12 @@ fi
 if git log -1 --format=%s | grep -q '^\[uiax\]'; then
   bash drag/uiax.sh
   mkdir -p "$RUNNER_TEMP/lgx-cap"; cp "$RUNNER_TEMP/uiax/log.txt" "$RUNNER_TEMP/lgx-cap/" 2>/dev/null
+  exit 0
+fi
+if git log -1 --format=%s | grep -q '^\[seqanim\]'; then
+  sed 's#<string>26.0</string>#<string>15.0</string>#g' drag/anim.sh > "$RUNNER_TEMP/anim15.sh"
+  sed "s#anim2-results#anim2-seq#g; s#drag/anim.sh#$RUNNER_TEMP/anim15.sh#g" drag/anim2.sh > "$RUNNER_TEMP/anim2s.sh"
+  bash "$RUNNER_TEMP/anim2s.sh"
   exit 0
 fi
 if git log -1 --format=%s | grep -q '^\[drag\]'; then
