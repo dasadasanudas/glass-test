@@ -1,0 +1,14 @@
+ProductName:		macOS
+ProductVersion:		26.6.2
+BuildVersion:		25G83
+/System/Library/PrivateFrameworks/SFSymbols.framework/Versions/A/Resources/CoreGlyphsPrivate.bundle/Contents/Resources/name_availability.plist
+/System/Library/PrivateFrameworks/SFSymbols.framework/Versions/A/Resources/CoreGlyphs.bundle/Contents/Resources/name_availability.plist
+plist /System/Library/PrivateFrameworks/SFSymbols.framework/Versions/A/Resources/CoreGlyphsPrivate.bundle/Contents/Resources/name_availability.plist
+swiftc exit 0
+names 1667 from /System/Library/PrivateFrameworks/SFSymbols.framework/Versions/A/Resources/CoreGlyphsPrivate.bundle/Contents/Resources/name_availability.plist
+short.pdf pages 1755
+all_regular.pdf pages 0
+done
+syms exit 0
+/Users/runner/work/_temp/syms/all_regular.pdf 809 images 0 fonts 0
+/Users/runner/work/_temp/syms/short.pdf 3271042 images 3456 fonts 0

@@ -1,0 +1,6 @@
+total 1640
+drwxr-xr-x  5 runner  staff     160 Nov  5 13:22 .
+drwxr-xr-x  3 runner  staff      96 Nov  5 13:22 ..
+-rw-r--r--  1 runner  staff       0 Nov  5 13:22 files.txt
+-rw-r--r--  1 runner  staff     863 Nov  5 13:22 log.txt
+-rw-r--r--  1 runner  staff  832799 Nov  5 13:22 syms.zip
