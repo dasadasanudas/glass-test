@@ -6,6 +6,7 @@
 # Nov 4 findings: Apple Screen Sharing (port 5900) accepts the screen password but shows a separate login
 # window (user "Anka"), not runner's desktop. macVNC (LibVNC's macOS server, built here, port 5901) shows the
 # real desktop. The page uses whichever server the on-Mac self-test (live/vnc_selftest.py) proves is not black.
+# Nov 5: GitHub's image ships a solid black wallpaper; a real macOS wallpaper is set at start.
 T() { perl -e 'alarm shift; exec @ARGV' "$@"; }
 MIN="${MINUTES:-}"; [ -z "$MIN" ] && MIN=$(cat live/minutes.txt 2>/dev/null || echo 60)
 MIN=$(( MIN > 340 ? 340 : MIN ))
@@ -14,7 +15,7 @@ else PW=$(openssl rand -hex 4); NOTE="no LIVE_MAC_PASSWORD secret set: a random 
 echo "::add-mask::$PW"
 ME=$(whoami); A=livemac
 START=$(date -u '+%Y-%m-%d %H:%M'); END=$(date -u -v+${MIN}M '+%Y-%m-%d %H:%M' 2>/dev/null)
-URL=""; VNC="?"; WEB="?"; CODES=""; CONSOLE="?"; SHOT="none"; TOK="?"; VPW="?"; SECT="?"; PATCH="?"; VTEST="?"; VTEST2="not run"; TCCR="?"; MVB="?"; PORT=5900
+URL=""; VNC="?"; WEB="?"; CODES=""; CONSOLE="?"; SHOT="none"; TOK="?"; VPW="?"; SECT="?"; PATCH="?"; VTEST="?"; VTEST2="not run"; TCCR="?"; MVB="?"; PORT=5900; WALLR="?"; WALLS="?"
 publish() {
   D=$(mktemp -d); mkdir -p "$D/s"
   {
@@ -22,6 +23,8 @@ publish() {
     echo "link: ${URL:-none}/vnc.html?autoconnect=1&resize=scale"
     echo "login: Password only -> first 8 characters of your secret"
     echo "page uses port: $PORT (5900 = Apple Screen Sharing, 5901 = macVNC)"
+    echo "wallpaper: $WALLR"
+    echo "wallpapers on this image: $WALLS"
     echo "self-test 5900 Apple Screen Sharing (real login on the Mac): $VTEST"
     echo "self-test 5901 macVNC (real login on the Mac): $VTEST2"
     echo "macVNC build: $MVB"
@@ -34,6 +37,7 @@ publish() {
     echo "web page (local check): $WEB"
     echo "console user: $CONSOLE"
     echo "local screenshot: $SHOT (s/screen.png)"
+    echo "machine specs: $(sysctl -n hw.ncpu) cores, $(( $(sysctl -n hw.memsize) / 1073741824 )) GB RAM, $(sysctl -n machdep.cpu.brand_string 2>/dev/null)"
     echo "step exit codes: $CODES"
     echo "minutes: $MIN"
     echo "started (UTC): $START"
@@ -54,6 +58,15 @@ publish starting
   T 120 git clone -q --depth 1 https://github.com/LibVNC/macVNC.git /tmp/macvnc > /tmp/mvclone.txt 2>&1
   cd /tmp/macvnc && T 200 cmake -B build -DCMAKE_BUILD_TYPE=Release . > /tmp/mvcmake.txt 2>&1 && T 400 cmake --build build -j 4 > /tmp/mvbuild.txt 2>&1
   echo $? > /tmp/mv_done ) &
+# a real wallpaper (GitHub's image uses Solid Colors/Black.png): prefer Tahoe, then any macOS picture, then a non-black solid colour
+DP="/System/Library/Desktop Pictures"
+WALLS=$(ls "$DP" 2>/dev/null | head -12 | tr '\n' ',' | sed 's/,$//')
+WALL=$(ls "$DP"/*.heic 2>/dev/null | grep -i tahoe | head -1)
+[ -z "$WALL" ] && WALL=$(ls "$DP"/*.heic "$DP"/*.jpg "$DP"/*.png 2>/dev/null | head -1)
+[ -z "$WALL" ] && WALL=$(ls "$DP/Solid Colors/"*.png 2>/dev/null | grep -vi black | head -1)
+if [ -n "$WALL" ]; then
+  T 30 osascript -e "tell application \"System Events\" to tell every desktop to set picture to POSIX file \"$WALL\"" > /tmp/wall.txt 2>&1 && WALLR="$WALL" || WALLR="failed: $(head -c 100 /tmp/wall.txt | tr '\n' ' ')"
+else WALLR="none found"; fi
 # keep the console display awake for the whole session
 T 20 sudo pmset -a displaysleep 0 sleep 0 disksleep 0 > /tmp/pm.txt 2>&1; CODES="$CODES $?"
 nohup caffeinate -dimsu -t $(( MIN * 60 + 900 )) > /dev/null 2>&1 &
@@ -139,7 +152,7 @@ tar -xzf /tmp/cf.tgz -C /tmp 2>/dev/null; CODES="$CODES $?"; chmod +x /tmp/cloud
 nohup /tmp/cloudflared tunnel --no-autoupdate --url http://localhost:6080 > /tmp/cf.log 2>&1 &
 for i in $(seq 1 60); do URL=$(grep -Eo 'https://[a-z0-9-]+\.trycloudflare\.com' /tmp/cf.log | head -1); [ -n "$URL" ] && break; sleep 2; done
 publish running
-echo "Live Mac link: ${URL}/vnc.html?autoconnect=1&resize=scale  (port $PORT; 5900: $VTEST; 5901: $VTEST2; macVNC: $MVB)"
+echo "Live Mac link: ${URL}/vnc.html?autoconnect=1&resize=scale  (port $PORT; wallpaper: $WALLR; 5901: $VTEST2)"
 E=$(( $(date +%s) + MIN * 60 )); while [ $(date +%s) -lt $E ]; do caffeinate -u -t 1 > /dev/null 2>&1; sleep 300; done
 publish ended
 exit 0
