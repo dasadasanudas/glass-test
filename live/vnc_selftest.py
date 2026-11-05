@@ -1,6 +1,7 @@
 # Live Mac self-test: logs in to a VNC server on this Mac with the screen password, exactly like the noVNC
 # page does, watches ~6 s of frames, reports how much of each is not black, and saves the last frame.
-# With 'input', it then clicks the Apple menu over VNC, measures how many pixels changed, and presses Escape.
+# With 'input', it then clicks the Apple menu over VNC (up to 3 tries), measures how many pixels changed,
+# and presses Escape.
 # Usage: python3 live/vnc_selftest.py <password> [port] [png] [input]  (one line out; never prints it)
 import socket, struct, subprocess, sys, time, zlib
 pw = sys.argv[1].encode()[:8].ljust(8, b'\0')
@@ -118,17 +119,29 @@ try:
     last = float(seen[-1])
     extra = ''
     if INPUT:
-        f0 = bytes(fb)
-        s.sendall(struct.pack('>BBHH', 5, 0, 30, 14)); time.sleep(0.3)        # move to the Apple menu
-        s.sendall(struct.pack('>BBHH', 5, 1, 30, 14)); time.sleep(0.15)       # press
-        s.sendall(struct.pack('>BBHH', 5, 0, 30, 14)); time.sleep(1.5)        # release
-        frame(); f1 = bytes(fb)
-        save_png(OUT.replace('.png', '_menu.png'), w, h, fb)
-        s.sendall(struct.pack('>BBxxI', 4, 1, 0xff1b)); s.sendall(struct.pack('>BBxxI', 4, 0, 0xff1b)); time.sleep(1.0)   # Escape
-        frame(); f2 = bytes(fb)
-        c1 = changed(f0, f1); c2 = changed(f1, f2); c3 = changed(f0, f2)
-        ok = c1 > 0.5 and c2 > 0.5
-        extra = ' | input: %s (click changed %.1f%% of the screen, Escape changed %.1f%%, left over %.1f%%)' % ('works' if ok else 'NOT confirmed', c1, c2, c3)
+        tries = []
+        ok = False
+        for attempt in range(3):
+            s.sendall(struct.pack('>BBHH', 5, 0, 300, 300)); time.sleep(0.4)      # wiggle away first
+            s.sendall(struct.pack('>BBHH', 5, 0, 30, 14)); time.sleep(0.6)        # move to the Apple menu
+            frame(); f0 = bytes(fb)
+            s.sendall(struct.pack('>BBHH', 5, 1, 30, 14)); time.sleep(0.35)       # press (longer hold)
+            s.sendall(struct.pack('>BBHH', 5, 0, 30, 14)); time.sleep(1.8)        # release
+            frame(); f1 = bytes(fb)
+            c1 = changed(f0, f1)
+            if c1 > 0.5:
+                save_png(OUT.replace('.png', '_menu.png'), w, h, fb)
+                s.sendall(struct.pack('>BBxxI', 4, 1, 0xff1b)); s.sendall(struct.pack('>BBxxI', 4, 0, 0xff1b)); time.sleep(1.2)   # Escape
+                frame(); f2 = bytes(fb)
+                c2 = changed(f1, f2)
+                tries.append('try %d: click %.1f%%, Escape %.1f%%' % (attempt + 1, c1, c2))
+                ok = c2 > 0.5
+                break
+            tries.append('try %d: click %.1f%%' % (attempt + 1, c1))
+            if attempt == 2:
+                save_png(OUT.replace('.png', '_menu.png'), w, h, fb)
+            time.sleep(1.0)
+        extra = ' | input: %s (%s)' % ('works' if ok else 'NOT confirmed', '; '.join(tries))
     print('auth: ok, screen %dx%d, visible %% per frame: %s%s | LAST=%.1f' % (w, h, ' '.join(seen), extra, last))
 except SystemExit:
     raise
