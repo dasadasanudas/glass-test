@@ -16,7 +16,7 @@ concurrency:
   cancel-in-progress: true
 jobs:
   mac:
-    runs-on: macos-26
+    runs-on: macos-26-xlarge
     timeout-minutes: 350
     steps:
       - uses: actions/checkout@v4
