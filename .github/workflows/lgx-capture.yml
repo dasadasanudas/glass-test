@@ -7,8 +7,17 @@ on:
 permissions:
   contents: write
 jobs:
+  pick:
+    runs-on: ubuntu-latest
+    outputs:
+      label: ${{ steps.p.outputs.label }}
+    steps:
+      - uses: actions/checkout@v4
+      - id: p
+        run: echo "label=$(tr -d ' \r\n' < lgx/runner.txt 2>/dev/null || echo macos-26)" >> "$GITHUB_OUTPUT"
   cap:
-    runs-on: macos-26
+    needs: pick
+    runs-on: ${{ needs.pick.outputs.label || 'macos-26' }}
     timeout-minutes: 14
     steps:
       - uses: actions/checkout@v4
