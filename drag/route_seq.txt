@@ -1,0 +1,1 @@
+drag/run.sh routes: subject containing seqsys -> drag/seqref.sh sys, seqapp -> drag/seqref.sh app (runner from lgx/runner.txt).

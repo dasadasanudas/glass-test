@@ -1,1 +1,1 @@
-dockgeo (Nov 5): Dock frames per resolution and tilesize
+seqsys (Nov 5): Sequoia system UI references
