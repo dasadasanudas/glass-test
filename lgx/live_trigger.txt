@@ -1,1 +1,1 @@
-self-test 11 (Nov 5): glass + wallpaper confirmed in test 10; click test now retries up to 3 times with a longer hold
+self-test 12 (Nov 5): display modes + resolution raise, authorizationdb so GUI prompts stop asking, local frame-rate probe
