@@ -4,12 +4,14 @@
 # cancelling the run.
 # Login: the page asks for a Password only: type the first 8 characters of LIVE_MAC_PASSWORD.
 # Nov 4 findings: Apple Screen Sharing (port 5900) accepts the screen password but shows a separate login
-# window (user "Anka"), not runner's desktop. macVNC (LibVNC's macOS server, built here, port 5901) shows the
-# real desktop, so the page uses 5901 whenever the on-Mac self-test (live/vnc_selftest.py) logs in there.
+# window (the console account runner, whose RealName in this VM template is "Anka"), not runner's desktop.
+# macVNC (LibVNC's macOS server, built here, port 5901) shows the real desktop, so the page uses 5901
+# whenever the on-Mac self-test (live/vnc_selftest.py) logs in there.
 # Nov 5: GitHub's image ships a solid black wallpaper and turns Reduce Transparency + Reduce Motion ON
 # (actions/runner-images configure-system.sh), which kills Liquid Glass (and the knob lens on switches and
-# sliders, which only shows with Reduce Motion off). Both are undone at start. live/probe.sh logs display
-# modes, accounts, authorization rights and the frame-rate ceiling to s/probe.txt, and raises the resolution.
+# sliders, which only shows with Reduce Motion off). Both are undone at start. live/probe.sh sets the
+# resolution from live/res.txt (modes up to 1920x1080 exist) and logs diagnostics to s/probe.txt.
+# live/authfix.sh allows admin rights outright, because runner's password is unknown and unchangeable.
 T() { perl -e 'alarm shift; exec @ARGV' "$@"; }
 MIN="${MINUTES:-}"; [ -z "$MIN" ] && MIN=$(cat live/minutes.txt 2>/dev/null || echo 60)
 MIN=$(( MIN > 340 ? 340 : MIN ))
@@ -28,8 +30,8 @@ publish() {
     echo "page uses port: $PORT (5900 = Apple Screen Sharing, 5901 = macVNC)"
     echo "accessibility flags as the image ships them (RT/RM/IC): $SHIPPED"
     echo "glass settings now (Reduce Transparency / Reduce Motion / Increase Contrast): $ACC"
-    echo "screen resolution: $RES"
-    echo "admin prompts suppressed: $AUTHR"
+    echo "screen resolution: $RES (change it by editing live/res.txt; 1024x768 is fastest, 1920x1080 biggest)"
+    echo "admin password prompts: $AUTHR"
     echo "wallpaper: $WALLR"
     echo "wallpapers on this image: $WALLS"
     echo "self-test 5900 Apple Screen Sharing (real login on the Mac): $VTEST"
@@ -78,14 +80,9 @@ T 15 defaults write com.apple.Accessibility ReduceMotionEnabled -int 0 > /dev/nu
 T 15 killall Dock ControlCenter SystemUIServer NotificationCenter Spotlight WindowManager Finder > /dev/null 2>&1
 sleep 8
 ACC="$(defaults read com.apple.universalaccess reduceTransparency 2>/dev/null || echo ?) / $(defaults read com.apple.universalaccess reduceMotion 2>/dev/null || echo ?) / $(defaults read com.apple.universalaccess increaseContrast 2>/dev/null || echo ?) (0 = off = glass on)"
-# admin rights without password prompts: the GUI asks for an account whose password we do not own, so allow
-# the rights outright and make sure the console user is an admin
+# no more admin password dialogs (runner's password is unknown and cannot be changed: secure token)
 T 20 sudo dseditgroup -o edit -a "$ME" -t user admin > /dev/null 2>&1
-AOK=0
-for R in system.preferences system.preferences.accessibility system.preferences.datetime system.preferences.desktop system.preferences.dock system.preferences.energysaver system.preferences.network system.preferences.printing system.preferences.security system.preferences.sharing system.preferences.softwareupdate; do
-  T 15 sudo security authorizationdb write $R allow > /dev/null 2>&1 && AOK=$((AOK+1))
-done
-AUTHR="$AOK of 11 preference rights set to allow; $ME added to admin"
+AUTHR=$(T 120 bash live/authfix.sh 2>&1 | tail -1)
 # a real wallpaper (GitHub's image uses Solid Colors/Black.png): prefer Tahoe, then any macOS picture, then a non-black solid colour
 DP="/System/Library/Desktop Pictures"
 WALLS=$(ls "$DP" 2>/dev/null | head -12 | tr '\n' ',' | sed 's/,$//')
@@ -95,7 +92,7 @@ WALL=$(ls "$DP"/*.heic 2>/dev/null | grep -i tahoe | head -1)
 if [ -n "$WALL" ]; then
   T 30 osascript -e "tell application \"System Events\" to tell every desktop to set picture to POSIX file \"$WALL\"" > /tmp/wall.txt 2>&1 && WALLR="$WALL" || WALLR="failed: $(head -c 100 /tmp/wall.txt | tr '\n' ' ')"
 else WALLR="none found"; fi
-# diagnostics + resolution raise
+# resolution + diagnostics
 T 300 bash live/probe.sh > /dev/null 2>&1
 RES=$(grep '^RES=' /tmp/probe.txt 2>/dev/null | tail -1 | sed 's/^RES=//')
 publish "probe done"
@@ -185,7 +182,7 @@ tar -xzf /tmp/cf.tgz -C /tmp 2>/dev/null; CODES="$CODES $?"; chmod +x /tmp/cloud
 nohup /tmp/cloudflared tunnel --no-autoupdate --url http://localhost:6080 > /tmp/cf.log 2>&1 &
 for i in $(seq 1 60); do URL=$(grep -Eo 'https://[a-z0-9-]+\.trycloudflare\.com' /tmp/cf.log | head -1); [ -n "$URL" ] && break; sleep 2; done
 publish running
-echo "Live Mac link: ${URL}/vnc.html?autoconnect=1&resize=scale  (port $PORT; shipped flags $SHIPPED; now $ACC; res $RES; wallpaper: $WALLR)"
+echo "Live Mac link: ${URL}/vnc.html?autoconnect=1&resize=scale  (port $PORT; shipped flags $SHIPPED; now $ACC; res $RES; prompts: $AUTHR)"
 E=$(( $(date +%s) + MIN * 60 )); while [ $(date +%s) -lt $E ]; do caffeinate -u -t 1 > /dev/null 2>&1; sleep 300; done
 publish ended
 exit 0

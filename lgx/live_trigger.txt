@@ -1,1 +1,1 @@
-self-test 14 (Nov 5): 1280x960 confirmed, no password candidate works, so allow system.privilege.admin and the install rights outright
+self-test 14b (Nov 5): start.sh calls live/authfix.sh (allow admin rights so no password dialog appears)
