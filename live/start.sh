@@ -7,7 +7,9 @@
 # window (user "Anka"), not runner's desktop. macVNC (LibVNC's macOS server, built here, port 5901) shows the
 # real desktop, so the page uses 5901 whenever the on-Mac self-test (live/vnc_selftest.py) logs in there.
 # Nov 5: GitHub's image ships a solid black wallpaper and turns Reduce Transparency + Reduce Motion ON
-# (actions/runner-images configure-system.sh), which kills Liquid Glass. Both are undone at start.
+# (actions/runner-images configure-system.sh), which kills Liquid Glass (and the knob lens on switches and
+# sliders, which only shows with Reduce Motion off). Both are undone at start. live/probe.sh logs display
+# modes, accounts, authorization rights and the frame-rate ceiling to s/probe.txt, and raises the resolution.
 T() { perl -e 'alarm shift; exec @ARGV' "$@"; }
 MIN="${MINUTES:-}"; [ -z "$MIN" ] && MIN=$(cat live/minutes.txt 2>/dev/null || echo 60)
 MIN=$(( MIN > 340 ? 340 : MIN ))
@@ -16,7 +18,7 @@ else PW=$(openssl rand -hex 4); NOTE="no LIVE_MAC_PASSWORD secret set: a random 
 echo "::add-mask::$PW"
 ME=$(whoami); A=livemac
 START=$(date -u '+%Y-%m-%d %H:%M'); END=$(date -u -v+${MIN}M '+%Y-%m-%d %H:%M' 2>/dev/null)
-URL=""; VNC="?"; WEB="?"; CODES=""; CONSOLE="?"; SHOT="none"; TOK="?"; VPW="?"; SECT="?"; PATCH="?"; VTEST="?"; VTEST2="not run"; TCCR="?"; MVB="?"; PORT=5900; WALLR="?"; WALLS="?"; ACC="?"
+URL=""; VNC="?"; WEB="?"; CODES=""; CONSOLE="?"; SHOT="none"; TOK="?"; VPW="?"; SECT="?"; PATCH="?"; VTEST="?"; VTEST2="not run"; TCCR="?"; MVB="?"; PORT=5900; WALLR="?"; WALLS="?"; ACC="?"; SHIPPED="?"; RES="?"; AUTHR="?"
 publish() {
   D=$(mktemp -d); mkdir -p "$D/s"
   {
@@ -24,7 +26,10 @@ publish() {
     echo "link: ${URL:-none}/vnc.html?autoconnect=1&resize=scale"
     echo "login: Password only -> first 8 characters of your secret"
     echo "page uses port: $PORT (5900 = Apple Screen Sharing, 5901 = macVNC)"
-    echo "glass settings (Reduce Transparency / Reduce Motion / Increase Contrast): $ACC"
+    echo "accessibility flags as the image ships them (RT/RM/IC): $SHIPPED"
+    echo "glass settings now (Reduce Transparency / Reduce Motion / Increase Contrast): $ACC"
+    echo "screen resolution: $RES"
+    echo "admin prompts suppressed: $AUTHR"
     echo "wallpaper: $WALLR"
     echo "wallpapers on this image: $WALLS"
     echo "self-test 5900 Apple Screen Sharing (real login on the Mac): $VTEST"
@@ -51,6 +56,7 @@ publish() {
   } > "$D/s/status.txt"
   for f in screen vnc vnc5901 vnc5901_menu; do [ -f /tmp/$f.png ] && cp /tmp/$f.png "$D/s/$f.png"; done
   [ -f /tmp/mvbuild_tail.txt ] && cp /tmp/mvbuild_tail.txt "$D/s/macvnc_build.txt"
+  [ -f /tmp/probe.txt ] && cp /tmp/probe.txt "$D/s/probe.txt"
   ( cd "$D" && git init -q && git config user.name lgx-bot && git config user.email lgx-bot@users.noreply.github.com && git checkout -q -b live-status && git add s && git commit -qm "live mac $1" && T 60 git -c credential.helper= -c core.askPass= push -q -f "https://x-access-token:${GH_TOKEN}@github.com/${REPO}.git" live-status ) > /dev/null 2>&1 || echo "publish failed ($1)"
 }
 publish starting
@@ -60,8 +66,11 @@ publish starting
   T 120 git clone -q --depth 1 https://github.com/LibVNC/macVNC.git /tmp/macvnc > /tmp/mvclone.txt 2>&1
   cd /tmp/macvnc && T 200 cmake -B build -DCMAKE_BUILD_TYPE=Release . > /tmp/mvcmake.txt 2>&1 && T 400 cmake --build build -j 4 > /tmp/mvbuild.txt 2>&1
   echo $? > /tmp/mv_done ) &
-# Liquid Glass back on: the runner image sets Reduce Transparency + Reduce Motion; undo them and restart the
-# system UI so Dock, menu bar, Control Center and Finder pick it up (same method as drag/sysref.sh)
+# what the image ships (proof for the no-glass and no-knob-lens question)
+SHIPPED="$(defaults read com.apple.universalaccess reduceTransparency 2>/dev/null || echo unset) / $(defaults read com.apple.universalaccess reduceMotion 2>/dev/null || echo unset) / $(defaults read com.apple.universalaccess increaseContrast 2>/dev/null || echo unset)"
+# Liquid Glass back on: undo them and restart the system UI so Dock, menu bar, Control Center and Finder pick
+# it up (same method as drag/sysref.sh). Reduce Motion matters too: it removes the glass lens on switch and
+# slider knobs while dragging.
 for K2 in reduceTransparency reduceMotion increaseContrast differentiateWithoutColor; do
   T 15 defaults write com.apple.universalaccess $K2 -bool false > /dev/null 2>&1
 done
@@ -69,6 +78,14 @@ T 15 defaults write com.apple.Accessibility ReduceMotionEnabled -int 0 > /dev/nu
 T 15 killall Dock ControlCenter SystemUIServer NotificationCenter Spotlight WindowManager Finder > /dev/null 2>&1
 sleep 8
 ACC="$(defaults read com.apple.universalaccess reduceTransparency 2>/dev/null || echo ?) / $(defaults read com.apple.universalaccess reduceMotion 2>/dev/null || echo ?) / $(defaults read com.apple.universalaccess increaseContrast 2>/dev/null || echo ?) (0 = off = glass on)"
+# admin rights without password prompts: the GUI asks for an account whose password we do not own, so allow
+# the rights outright and make sure the console user is an admin
+T 20 sudo dseditgroup -o edit -a "$ME" -t user admin > /dev/null 2>&1
+AOK=0
+for R in system.preferences system.preferences.accessibility system.preferences.datetime system.preferences.desktop system.preferences.dock system.preferences.energysaver system.preferences.network system.preferences.printing system.preferences.security system.preferences.sharing system.preferences.softwareupdate; do
+  T 15 sudo security authorizationdb write $R allow > /dev/null 2>&1 && AOK=$((AOK+1))
+done
+AUTHR="$AOK of 11 preference rights set to allow; $ME added to admin"
 # a real wallpaper (GitHub's image uses Solid Colors/Black.png): prefer Tahoe, then any macOS picture, then a non-black solid colour
 DP="/System/Library/Desktop Pictures"
 WALLS=$(ls "$DP" 2>/dev/null | head -12 | tr '\n' ',' | sed 's/,$//')
@@ -78,6 +95,10 @@ WALL=$(ls "$DP"/*.heic 2>/dev/null | grep -i tahoe | head -1)
 if [ -n "$WALL" ]; then
   T 30 osascript -e "tell application \"System Events\" to tell every desktop to set picture to POSIX file \"$WALL\"" > /tmp/wall.txt 2>&1 && WALLR="$WALL" || WALLR="failed: $(head -c 100 /tmp/wall.txt | tr '\n' ' ')"
 else WALLR="none found"; fi
+# diagnostics + resolution raise
+T 300 bash live/probe.sh > /dev/null 2>&1
+RES=$(grep '^RES=' /tmp/probe.txt 2>/dev/null | tail -1 | sed 's/^RES=//')
+publish "probe done"
 # keep the console display awake for the whole session
 T 20 sudo pmset -a displaysleep 0 sleep 0 disksleep 0 > /tmp/pm.txt 2>&1; CODES="$CODES $?"
 nohup caffeinate -dimsu -t $(( MIN * 60 + 900 )) > /dev/null 2>&1 &
@@ -164,7 +185,7 @@ tar -xzf /tmp/cf.tgz -C /tmp 2>/dev/null; CODES="$CODES $?"; chmod +x /tmp/cloud
 nohup /tmp/cloudflared tunnel --no-autoupdate --url http://localhost:6080 > /tmp/cf.log 2>&1 &
 for i in $(seq 1 60); do URL=$(grep -Eo 'https://[a-z0-9-]+\.trycloudflare\.com' /tmp/cf.log | head -1); [ -n "$URL" ] && break; sleep 2; done
 publish running
-echo "Live Mac link: ${URL}/vnc.html?autoconnect=1&resize=scale  (port $PORT; glass: $ACC; wallpaper: $WALLR; 5901: $VTEST2)"
+echo "Live Mac link: ${URL}/vnc.html?autoconnect=1&resize=scale  (port $PORT; shipped flags $SHIPPED; now $ACC; res $RES; wallpaper: $WALLR)"
 E=$(( $(date +%s) + MIN * 60 )); while [ $(date +%s) -lt $E ]; do caffeinate -u -t 1 > /dev/null 2>&1; sleep 300; done
 publish ended
 exit 0
