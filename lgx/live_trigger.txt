@@ -1,1 +1,1 @@
-self-test 12b (Nov 5): shipped-flag log, probe.sh (display modes, accounts, auth rights, frame-rate ceiling), resolution raise
+self-test 13 (Nov 5): resolution setter fixed (modes up to 1920x1080 exist), live/res.txt override, runner password candidate sweep
