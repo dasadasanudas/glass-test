@@ -1,1 +1,1 @@
-dockmag (Nov 5): Dock magnification sweep, routed via [drag] -> drag/run.sh -> drag/dockmag.sh
+dockgeo (Nov 5): Dock frames per resolution and tilesize

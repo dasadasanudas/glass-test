@@ -7,6 +7,8 @@
 # A subject containing "animref" runs only drag/anim.sh (animation references on video, branch anim-results).
 # A subject containing "mergeref" runs only drag/merge.sh (glass merging probe, results/merge-cap.zip).
 # A subject containing "dockmag" runs only drag/dockmag.sh (Dock magnification sweep + video, branch dockmag-results).
+# A subject containing "dockgeo" runs only drag/dockgeo.sh (Dock sizes per resolution and tilesize, branch dockgeo-results).
+if git log -1 --format=%s | grep -q 'dockgeo'; then bash drag/dockgeo.sh; exit 0; fi
 if git log -1 --format=%s | grep -q 'dockmag'; then bash drag/dockmag.sh; exit 0; fi
 if git log -1 --format=%s | grep -q 'anim2ref'; then bash drag/anim2.sh; exit 0; fi
 if git log -1 --format=%s | grep -q 'animref'; then bash drag/anim.sh; exit 0; fi
