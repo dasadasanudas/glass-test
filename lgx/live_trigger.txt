@@ -1,1 +1,1 @@
-self-test 15 (Nov 5): verify live/authfix.sh output (test 14 ran the older start.sh)
+dockmag (Nov 5): Dock magnification sweep, routed via [drag] -> drag/run.sh -> drag/dockmag.sh
