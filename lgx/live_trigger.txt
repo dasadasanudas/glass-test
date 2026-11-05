@@ -1,1 +1,1 @@
-seqsys (Nov 5): Sequoia system UI references, routed
+seqapp (Nov 5): Sequoia app window references
