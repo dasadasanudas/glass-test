@@ -1,2 +1,1 @@
-Pushing a change here with a commit subject starting [live] runs the 9-minute live Mac self-test (see lgx/run.sh).
-self-test 9
+self-test 10 (Nov 5): Reduce Transparency/Motion off + UI restart, wallpaper, port 5901 when macVNC auth ok, changed-pixel input check

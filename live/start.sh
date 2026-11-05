@@ -5,8 +5,9 @@
 # Login: the page asks for a Password only: type the first 8 characters of LIVE_MAC_PASSWORD.
 # Nov 4 findings: Apple Screen Sharing (port 5900) accepts the screen password but shows a separate login
 # window (user "Anka"), not runner's desktop. macVNC (LibVNC's macOS server, built here, port 5901) shows the
-# real desktop. The page uses whichever server the on-Mac self-test (live/vnc_selftest.py) proves is not black.
-# Nov 5: GitHub's image ships a solid black wallpaper; a real macOS wallpaper is set at start.
+# real desktop, so the page uses 5901 whenever the on-Mac self-test (live/vnc_selftest.py) logs in there.
+# Nov 5: GitHub's image ships a solid black wallpaper and turns Reduce Transparency + Reduce Motion ON
+# (actions/runner-images configure-system.sh), which kills Liquid Glass. Both are undone at start.
 T() { perl -e 'alarm shift; exec @ARGV' "$@"; }
 MIN="${MINUTES:-}"; [ -z "$MIN" ] && MIN=$(cat live/minutes.txt 2>/dev/null || echo 60)
 MIN=$(( MIN > 340 ? 340 : MIN ))
@@ -15,7 +16,7 @@ else PW=$(openssl rand -hex 4); NOTE="no LIVE_MAC_PASSWORD secret set: a random 
 echo "::add-mask::$PW"
 ME=$(whoami); A=livemac
 START=$(date -u '+%Y-%m-%d %H:%M'); END=$(date -u -v+${MIN}M '+%Y-%m-%d %H:%M' 2>/dev/null)
-URL=""; VNC="?"; WEB="?"; CODES=""; CONSOLE="?"; SHOT="none"; TOK="?"; VPW="?"; SECT="?"; PATCH="?"; VTEST="?"; VTEST2="not run"; TCCR="?"; MVB="?"; PORT=5900; WALLR="?"; WALLS="?"
+URL=""; VNC="?"; WEB="?"; CODES=""; CONSOLE="?"; SHOT="none"; TOK="?"; VPW="?"; SECT="?"; PATCH="?"; VTEST="?"; VTEST2="not run"; TCCR="?"; MVB="?"; PORT=5900; WALLR="?"; WALLS="?"; ACC="?"
 publish() {
   D=$(mktemp -d); mkdir -p "$D/s"
   {
@@ -23,6 +24,7 @@ publish() {
     echo "link: ${URL:-none}/vnc.html?autoconnect=1&resize=scale"
     echo "login: Password only -> first 8 characters of your secret"
     echo "page uses port: $PORT (5900 = Apple Screen Sharing, 5901 = macVNC)"
+    echo "glass settings (Reduce Transparency / Reduce Motion / Increase Contrast): $ACC"
     echo "wallpaper: $WALLR"
     echo "wallpapers on this image: $WALLS"
     echo "self-test 5900 Apple Screen Sharing (real login on the Mac): $VTEST"
@@ -58,6 +60,15 @@ publish starting
   T 120 git clone -q --depth 1 https://github.com/LibVNC/macVNC.git /tmp/macvnc > /tmp/mvclone.txt 2>&1
   cd /tmp/macvnc && T 200 cmake -B build -DCMAKE_BUILD_TYPE=Release . > /tmp/mvcmake.txt 2>&1 && T 400 cmake --build build -j 4 > /tmp/mvbuild.txt 2>&1
   echo $? > /tmp/mv_done ) &
+# Liquid Glass back on: the runner image sets Reduce Transparency + Reduce Motion; undo them and restart the
+# system UI so Dock, menu bar, Control Center and Finder pick it up (same method as drag/sysref.sh)
+for K2 in reduceTransparency reduceMotion increaseContrast differentiateWithoutColor; do
+  T 15 defaults write com.apple.universalaccess $K2 -bool false > /dev/null 2>&1
+done
+T 15 defaults write com.apple.Accessibility ReduceMotionEnabled -int 0 > /dev/null 2>&1
+T 15 killall Dock ControlCenter SystemUIServer NotificationCenter Spotlight WindowManager Finder > /dev/null 2>&1
+sleep 8
+ACC="$(defaults read com.apple.universalaccess reduceTransparency 2>/dev/null || echo ?) / $(defaults read com.apple.universalaccess reduceMotion 2>/dev/null || echo ?) / $(defaults read com.apple.universalaccess increaseContrast 2>/dev/null || echo ?) (0 = off = glass on)"
 # a real wallpaper (GitHub's image uses Solid Colors/Black.png): prefer Tahoe, then any macOS picture, then a non-black solid colour
 DP="/System/Library/Desktop Pictures"
 WALLS=$(ls "$DP" 2>/dev/null | head -12 | tr '\n' ',' | sed 's/,$//')
@@ -80,7 +91,7 @@ T 90 sudo sysadminctl -addUser "$A" -fullName "Live Mac" -password "$PW" -admin 
 SIP=$(csrutil status 2>/dev/null | head -1 | sed 's/.*: //')
 DB="/Library/Application Support/com.apple.TCC/TCC.db"
 TCCN=0; TCCE=""
-addtcc() { sudo sqlite3 "$DB" "INSERT OR REPLACE INTO access (service, client, client_type, auth_value, auth_reason, auth_version, indirect_object_identifier, flags, last_modified) VALUES ('$1', '$2', $3, 2, 4, 1, 'UNUSED', 0, $(date +%s));" > /tmp/tcc_err.txt 2>&1 && TCCN=$((TCCN+1)) || TCCE="$(head -c 90 /tmp/tcc_err.txt | tr '\n' ' ')"; }
+addtcc() { sudo sqlite3 -cmd ".timeout 8000" "$DB" "INSERT OR REPLACE INTO access (service, client, client_type, auth_value, auth_reason, auth_version, indirect_object_identifier, flags, last_modified) VALUES ('$1', '$2', $3, 2, 4, 1, 'UNUSED', 0, $(date +%s));" > /tmp/tcc_err.txt 2>&1 && TCCN=$((TCCN+1)) || TCCE="$(head -c 90 /tmp/tcc_err.txt | tr '\n' ' ')"; }
 SVCS="kTCCServiceScreenCapture kTCCServicePostEvent kTCCServiceAccessibility kTCCServiceListenEvent"
 RM=/System/Library/CoreServices/RemoteManagement
 for SV in $SVCS; do
@@ -130,12 +141,13 @@ if [ -n "$MV" ]; then
   ( cd /tmp && nohup "$MV" -rfbport 5901 -passwd "${PW:0:8}" > /tmp/macvnc.log 2>&1 & )
   sleep 6
   VTEST2=$(T 60 python3 live/vnc_selftest.py "${PW:0:8}" 5901 /tmp/vnc5901.png input 2>&1 | tail -1)
-  L1=$(echo "$VTEST" | sed -n 's/.*LAST=\([0-9.]*\).*/\1/p'); L2=$(echo "$VTEST2" | sed -n 's/.*LAST=\([0-9.]*\).*/\1/p')
-  if awk "BEGIN{exit !(${L2:-0} > 1 && ${L2:-0} > ${L1:-0})}"; then PORT=5901; fi
+  # 5900 always shows a separate login window, so the real desktop (5901) wins whenever its login works
+  case "$VTEST2" in "auth: ok"*) PORT=5901 ;; esac
 else
   MVB="failed (exit $(cat /tmp/mv_done 2>/dev/null || echo timeout); see s/macvnc_build.txt)"
 fi
 TCCR="SIP $SIP; rows added $TCCN${TCCE:+; error: $TCCE}"
+T 20 screencapture -x /tmp/screen.png > /dev/null 2>&1
 publish "servers checked"
 T 90 git clone -q --depth 1 https://github.com/novnc/noVNC.git /tmp/novnc; CODES="$CODES $?"
 T 90 git clone -q --depth 1 https://github.com/novnc/websockify.git /tmp/novnc/utils/websockify; CODES="$CODES $?"
@@ -152,7 +164,7 @@ tar -xzf /tmp/cf.tgz -C /tmp 2>/dev/null; CODES="$CODES $?"; chmod +x /tmp/cloud
 nohup /tmp/cloudflared tunnel --no-autoupdate --url http://localhost:6080 > /tmp/cf.log 2>&1 &
 for i in $(seq 1 60); do URL=$(grep -Eo 'https://[a-z0-9-]+\.trycloudflare\.com' /tmp/cf.log | head -1); [ -n "$URL" ] && break; sleep 2; done
 publish running
-echo "Live Mac link: ${URL}/vnc.html?autoconnect=1&resize=scale  (port $PORT; wallpaper: $WALLR; 5901: $VTEST2)"
+echo "Live Mac link: ${URL}/vnc.html?autoconnect=1&resize=scale  (port $PORT; glass: $ACC; wallpaper: $WALLR; 5901: $VTEST2)"
 E=$(( $(date +%s) + MIN * 60 )); while [ $(date +%s) -lt $E ]; do caffeinate -u -t 1 > /dev/null 2>&1; sleep 300; done
 publish ended
 exit 0

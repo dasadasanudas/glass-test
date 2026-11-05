@@ -1,6 +1,6 @@
 # Live Mac self-test: logs in to a VNC server on this Mac with the screen password, exactly like the noVNC
 # page does, watches ~6 s of frames, reports how much of each is not black, and saves the last frame.
-# With 'input', it then clicks the Apple menu over VNC, checks the screen changed, and presses Escape.
+# With 'input', it then clicks the Apple menu over VNC, measures how many pixels changed, and presses Escape.
 # Usage: python3 live/vnc_selftest.py <password> [port] [png] [input]  (one line out; never prints it)
 import socket, struct, subprocess, sys, time, zlib
 pw = sys.argv[1].encode()[:8].ljust(8, b'\0')
@@ -44,6 +44,15 @@ def visible(fb):
     for i in range(0, len(fb), 28):
         tot += 1
         if fb[i] + fb[i + 1] + fb[i + 2] > 60:
+            n += 1
+    return 100.0 * n / max(1, tot)
+
+def changed(a, b):
+    # percent of sampled pixels whose colour moved by more than 40 (sum of channels); works on any wallpaper
+    n = 0; tot = 0
+    for i in range(0, min(len(a), len(b)), 16):
+        tot += 1
+        if abs(a[i] - b[i]) + abs(a[i + 1] - b[i + 1]) + abs(a[i + 2] - b[i + 2]) > 40:
             n += 1
     return 100.0 * n / max(1, tot)
 
@@ -109,16 +118,17 @@ try:
     last = float(seen[-1])
     extra = ''
     if INPUT:
-        before = last
+        f0 = bytes(fb)
         s.sendall(struct.pack('>BBHH', 5, 0, 30, 14)); time.sleep(0.3)        # move to the Apple menu
         s.sendall(struct.pack('>BBHH', 5, 1, 30, 14)); time.sleep(0.15)       # press
         s.sendall(struct.pack('>BBHH', 5, 0, 30, 14)); time.sleep(1.5)        # release
-        after = frame()
+        frame(); f1 = bytes(fb)
         save_png(OUT.replace('.png', '_menu.png'), w, h, fb)
         s.sendall(struct.pack('>BBxxI', 4, 1, 0xff1b)); s.sendall(struct.pack('>BBxxI', 4, 0, 0xff1b)); time.sleep(1.0)   # Escape
-        closed = frame()
-        ok = after > before + 1.0 and closed < after - 0.5
-        extra = ' | input: %s (before %.1f%%, after click %.1f%%, after Escape %.1f%%)' % ('works' if ok else 'NOT confirmed', before, after, closed)
+        frame(); f2 = bytes(fb)
+        c1 = changed(f0, f1); c2 = changed(f1, f2); c3 = changed(f0, f2)
+        ok = c1 > 0.5 and c2 > 0.5
+        extra = ' | input: %s (click changed %.1f%% of the screen, Escape changed %.1f%%, left over %.1f%%)' % ('works' if ok else 'NOT confirmed', c1, c2, c3)
     print('auth: ok, screen %dx%d, visible %% per frame: %s%s | LAST=%.1f' % (w, h, ' '.join(seen), extra, last))
 except SystemExit:
     raise
