@@ -1,0 +1,32 @@
+/Users/runner/work/_temp/sys/wall_bands.png 4881
+/Users/runner/work/_temp/sys/wall_tiles.png 16951
+/Users/runner/work/_temp/sys/wall_check.png 8979
+RT=false RM=false IC=false
+Clock, Control Center
+
+menu bar item File of menu bar 1 of application process Finder
+menu bar item 2 of menu bar 1 of application process ControlCenter
+menu bar item 1 of menu bar 1 of application process ControlCenter
+scene bands_light done 03:09:47
+
+menu bar item File of menu bar 1 of application process Finder
+menu bar item 2 of menu bar 1 of application process ControlCenter
+menu bar item 1 of menu bar 1 of application process ControlCenter
+scene bands_dark done 03:10:10
+
+menu bar item File of menu bar 1 of application process Finder
+menu bar item 2 of menu bar 1 of application process ControlCenter
+scene tiles_light done 03:10:31
+
+menu bar item File of menu bar 1 of application process Finder
+menu bar item 2 of menu bar 1 of application process ControlCenter
+scene tiles_dark done 03:10:49
+
+menu bar item File of menu bar 1 of application process Finder
+menu bar item 2 of menu bar 1 of application process ControlCenter
+scene check_light done 03:11:09
+
+menu bar item File of menu bar 1 of application process Finder
+menu bar item 2 of menu bar 1 of application process ControlCenter
+scene check_dark done 03:11:27
+RT=false RM=false IC=false
