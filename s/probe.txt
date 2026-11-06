@@ -1,0 +1,35 @@
+== resolution ==
+wanted (live/res.txt): 1280x960
+result: set to 1280x960
+Resolution: 1280x960
+  mode 0: res:800x600 hz:60 color_depth:7
+  mode 1: res:960x540 hz:60 color_depth:7
+  mode 2: res:1024x576 hz:60 color_depth:7
+  mode 3: res:1024x768 hz:60 color_depth:7
+  mode 4: res:1280x720 hz:60 color_depth:7
+  mode 5: res:1280x960 hz:60 color_depth:7 <-- current mode
+  mode 6: res:1344x756 hz:60 color_depth:7
+  mode 7: res:1344x1008 hz:60 color_depth:7
+  mode 8: res:1600x900 hz:60 color_depth:7
+  mode 9: res:1600x1200 hz:60 color_depth:7
+  mode 10: res:1920x1080 hz:60 color_depth:7
+  mode 11: res:640x480 hz:60 color_depth:7
+
+== console account password ==
+runner RealName: RealName: Anka
+candidate sweep: none of 17 candidates worked
+admin group: root runner
+sudo without password: yes
+
+== hardware ==
+Model Name: Apple Virtual Machine 1
+Chip: Apple M2 Pro (Virtual)
+Total Number of Cores: 5
+Memory: 14 GB
+GPU section present: 0 lines (empty = no graphics device at all, software rendering)
+
+== how fast this Mac can grab a frame (no network) ==
+screencapture: 204 110 74 75 71 75 ms each -> about 13.6 fps ceiling on the Mac itself
+
+== macVNC log ==
+RES=1280x960

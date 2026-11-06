@@ -1,0 +1,14 @@
+✔︎ Bottle Manifest libvncserver (0.9.15_1)
+[32m==>[0m [1mFetching downloads for: [32mlibvncserver[39m[0m
+✔︎ Bottle libvncserver (0.9.15_1)
+[34m==>[0m [1mPouring libvncserver--0.9.15_1.arm64_tahoe.bottle.tar.gz[0m
+🍺  /opt/homebrew/Cellar/libvncserver/0.9.15_1: 28 files, 1.3MB
+-- Configuring done (1.9s)
+-- Generating done (0.0s)
+-- Build files have been written to: /tmp/macvnc/build
+[ 33%] Building C object CMakeFiles/macVNC.dir/src/ScreenCapturer.m.o
+Copying OS X content macVNC.app/Contents/Resources/icon.icns
+[ 66%] Building C object CMakeFiles/macVNC.dir/src/mac.m.o
+[ 66%] Built target macvnc-copy-compile-commands
+[100%] Linking C executable macVNC.app/Contents/MacOS/macVNC
+[100%] Built target macVNC

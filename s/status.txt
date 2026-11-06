@@ -1,0 +1,30 @@
+state: running
+link: https://rio-wal-pointing-proudly.trycloudflare.com/vnc.html?autoconnect=1&resize=scale
+login: Password only -> first 8 characters of your secret
+page uses port: 5901 (5900 = Apple Screen Sharing, 5901 = macVNC)
+accessibility flags as the image ships them (RT/RM/IC): 1 / 1 / unset
+glass settings now (Reduce Transparency / Reduce Motion / Increase Contrast): 0 / 0 / 0 (0 = off = glass on)
+screen resolution: 1280x960 (change it by editing live/res.txt; 1024x768 is fastest, 1920x1080 biggest)
+admin password prompts: authfix: 18 of 18 rights set to allow; system.privilege.admin class now <string>rule</string>
+wallpaper: /System/Library/Desktop Pictures/iMac Blue.heic
+wallpapers on this image: Big Sur Aerial.madesktop,Big Sur Coastline.madesktop,Big Sur Graphic.madesktop,Big Sur Horizon.madesktop,Big Sur Mountains.madesktop,Big Sur Night Grasses.madesktop,Big Sur Night Succulents.madesktop,Big Sur Road.madesktop,Big Sur Shore Rocks.madesktop,Big Sur Waters Edge.madesktop,Big Sur.madesktop,Catalina Clouds.madesktop
+self-test 5900 Apple Screen Sharing (real login on the Mac): auth: ok, screen 1280x960, visible % per frame: 0.0 100.0 100.0 100.0 100.0 100.0 | LAST=100.0
+self-test 5901 macVNC (real login on the Mac): auth: ok, screen 1280x960, visible % per frame: 100.0 100.0 100.0 100.0 100.0 100.0 | input: NOT confirmed (try 1: click 0.0%; try 2: click 6.5%, Escape 0.0%) | LAST=100.0
+macVNC build: built (/tmp/macvnc/build/macVNC.app/Contents/MacOS/macVNC)
+permissions (TCC): SIP disabled.; rows added 56
+auth types 5900 offers (2 = screen password, 30 = Apple username login): RFB 003.889 [30, 33, 36, 2, 35]
+noVNC prefers screen password: yes
+secure token runner: ENABLED
+screen (VNC) password file: written (33 bytes)
+screen sharing: up
+web page (local check): 200
+console user: runner
+local screenshot: taken 1663618 bytes (s/screen.png)
+machine specs: 5 cores, 14 GB RAM, Apple M2 Pro (Virtual)
+step exit codes:  0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 5 0 0 0 0 0
+minutes: 60
+started (UTC): 2026-11-06 07:25
+ends about (UTC): 2026-11-06 08:25
+run: 42180819024
+machine: arm64 26.7.2
+password: your LIVE_MAC_PASSWORD secret
